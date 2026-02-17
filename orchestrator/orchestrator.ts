@@ -5,6 +5,7 @@ import type {
   AgentOutput,
   Decision,
   FailedAttempt,
+  FailureCategory,
   PlanPhase,
   PlanTask,
   RunState,
@@ -195,7 +196,7 @@ export async function executeOrchestrator(
 interface TaskFlowResult {
   success: boolean;
   commitHash?: string;
-  failureCategory?: string;
+  failureCategory?: FailureCategory;
   failureDetails?: string;
 }
 

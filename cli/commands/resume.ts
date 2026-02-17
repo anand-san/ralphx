@@ -103,10 +103,9 @@ export async function resumeCommand(options: RunnerOptions): Promise<void> {
     watchdog.stop();
   }
 
-  console.log(
-    `\nRalphX run ${state.runId} finished with status: ${state.status}`,
-  );
-  if (state.status === "blocked") {
+  const finalStatus = state.status as string;
+  console.log(`\nRalphX run ${state.runId} finished with status: ${finalStatus}`);
+  if (finalStatus === "blocked") {
     console.log(`Handoff: ${state.handoffPath}`);
   }
 }
