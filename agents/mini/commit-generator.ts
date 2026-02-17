@@ -3,11 +3,17 @@ import type { AgentInput } from "../../state/types";
 import { buildCommitMessagePrompt } from "../prompts/templates";
 
 function buildPrompt(input: AgentInput): string {
-  // The commit generator receives diff info via peerProgress
-  const diffStat = input.peerProgress.get("diffStat") ?? "(empty)";
-  const diffPatch = input.peerProgress.get("diffPatch") ?? "(empty)";
-  const changedFiles =
-    input.peerProgress.get("changedFiles")?.split("\n") ?? [];
+  const diffStat = input.peerProgress.get("diffStat");
+  const diffPatch = input.peerProgress.get("diffPatch");
+  const changedFilesRaw = input.peerProgress.get("changedFiles");
+
+  if (!diffStat || !diffPatch) {
+    throw new Error(
+      "commit-generator requires diffStat and diffPatch in peerProgress",
+    );
+  }
+
+  const changedFiles = changedFilesRaw?.split("\n").filter(Boolean) ?? [];
 
   return buildCommitMessagePrompt({
     task: { title: input.task.title },

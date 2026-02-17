@@ -16,6 +16,10 @@ function buildPrompt(input: AgentInput): string {
       ? `## Previous Agent Outputs\n${input.previousOutputs.map((o) => `### ${o.agentId} (exit: ${o.exitCode})\n${o.raw.slice(0, 2000)}`).join("\n\n")}`
       : "";
 
+  const failureBlock = input.failureContext
+    ? `## Previous Failure\nThe last attempt failed:\n${input.failureContext}\n\nYou MUST account for this failure in your recommendation.`
+    : "";
+
   return [
     `You are the orchestrator planner. Your job is to analyze the current run state and recommend the next action.`,
     "",
@@ -35,21 +39,27 @@ function buildPrompt(input: AgentInput): string {
     "",
     peerProgressBlock,
     previousOutputsBlock,
+    failureBlock,
     "",
-    `## Instructions`,
-    `Analyze all available context and produce a JSON response with your recommendation.`,
+    `## Decision Logic`,
+    `- **dispatch_agent**: Task is ready to proceed. Set agentId to the agent that should handle it and provide specific agentContext instructions.`,
+    `- **retry_task**: Previous attempt failed but the approach is still valid. Provide rationale explaining what to do differently.`,
+    `- **skip_task**: Task is no longer needed (e.g., superseded by another task's changes). Explain why.`,
+    `- **block_task**: Task cannot proceed due to unresolved dependencies or unclear requirements. Explain what's blocking.`,
+    "",
+    `## Output Format`,
     `You must output valid JSON matching this schema:`,
     `{`,
     `  "contextBriefing": "Compact summary of run progress so far...",`,
     `  "recommendation": {`,
     `    "action": "dispatch_agent" | "skip_task" | "block_task" | "retry_task",`,
-    `    "agentId": "software-developer" | "qa-engineer" | "engineering-manager" | ...,`,
+    `    "agentId": "software-developer" | "qa-engineer" | "engineering-manager" | "product-manager" | "product-designer",`,
     `    "taskId": "task-xxx",`,
-    `    "rationale": "Why this action",`,
-    `    "agentContext": "Specific instructions for the agent",`,
-    `    "scope": ["file/path/hints"]`,
+    `    "rationale": "Why this action — be specific",`,
+    `    "agentContext": "Specific instructions or focus areas for the dispatched agent",`,
+    `    "scope": ["file/path/hints for the agent to focus on"]`,
     `  },`,
-    `  "warnings": ["any concerns"]`,
+    `  "warnings": ["any concerns or risks to flag"]`,
     `}`,
     "",
     `Output JSON only. No markdown, no explanation outside the JSON.`,
@@ -65,7 +75,13 @@ function parseOutput(raw: string): PlannerRecommendation {
       jsonStr = lines.slice(1, -1).join("\n").trim();
     }
   }
-  return JSON.parse(jsonStr) as PlannerRecommendation;
+  const parsed = JSON.parse(jsonStr);
+  if (!parsed.contextBriefing || !parsed.recommendation) {
+    throw new Error(
+      `Invalid planner output: missing contextBriefing or recommendation. Got: ${jsonStr.slice(0, 300)}`,
+    );
+  }
+  return parsed as PlannerRecommendation;
 }
 
 export const orchestratorPlanner: AgentDefinition = {

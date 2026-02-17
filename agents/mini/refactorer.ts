@@ -11,10 +11,15 @@ function buildPrompt(input: AgentInput): string {
   const failedAttempts = buildFailedAttemptsBlock(input.previousFailedAttempts);
 
   const notes = input.previousOutputs
-    .filter((o) => o.parsed && typeof o.parsed === "object")
+    .filter(
+      (o) =>
+        o.parsed &&
+        typeof o.parsed === "object" &&
+        "notes" in (o.parsed as object),
+    )
     .flatMap((o) => {
-      const p = o.parsed as { notes?: string[] };
-      return p.notes ?? [];
+      const p = o.parsed as { notes?: unknown };
+      return Array.isArray(p.notes) ? (p.notes as string[]) : [];
     });
 
   const notesBlock =
@@ -23,7 +28,7 @@ function buildPrompt(input: AgentInput): string {
       : "- (No refactor instructions)";
 
   return [
-    `Your goal is to improve code structure and quality WITHOUT changing functional behavior.`,
+    `You are a code refactorer. Your goal is to improve code structure and quality WITHOUT changing functional behavior.`,
     "",
     buildContextBlock(input),
     "",
@@ -31,15 +36,16 @@ function buildPrompt(input: AgentInput): string {
     failedAttempts,
     "",
     `<refactor_instructions>`,
-    `  The team has verified existing implementation and has requested changes. Focus ONLY on these items:`,
+    `  The QA team has reviewed the implementation and requested these specific changes:`,
     notesBlock,
     `</refactor_instructions>`,
     "",
     `## Constraints`,
-    `- Strictly follow the verifier's notes.`,
-    `- Do NOT alter the business logic or external behavior of the code.`,
+    `- Strictly follow the QA notes above. Address each item.`,
+    `- Do NOT alter the business logic (core functionality, calculations, data transformations) or external behavior.`,
     `- Maintain all existing types and interfaces unless explicitly asked to change them.`,
-    `- Ensure the code remains compilable after refactoring.`,
+    `- After refactoring, verify that existing tests still pass. Do not break working functionality.`,
+    `- Keep changes minimal and focused on the requested improvements.`,
   ].join("\n");
 }
 

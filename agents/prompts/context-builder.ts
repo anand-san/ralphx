@@ -7,7 +7,9 @@ import type {
 
 export function buildContextBlock(input: AgentInput): string {
   const notes =
-    input.task.notes.length > 0 ? input.task.notes.join(" | ") : "None";
+    input.task.notes.length > 0
+      ? input.task.notes.map((n, i) => `    ${i + 1}. ${n}`).join("\n")
+      : "    None";
 
   return [
     `<context>`,
@@ -20,8 +22,10 @@ export function buildContextBlock(input: AgentInput): string {
     `    <id>${input.task.id}</id>`,
     `    <title>${input.task.title}</title>`,
     `    <description>${input.task.description}</description>`,
-    `    <notes>${notes}</notes>`,
-    `    <attempt_count>${input.attempt}/${input.maxAttempts}</attempt_count>`,
+    `    <notes>`,
+    notes,
+    `    </notes>`,
+    `    <attempt>${input.attempt}/${input.maxAttempts}</attempt>`,
     `  </current_task>`,
     `  <files>`,
     `    <plan_path>${input.planPath}</plan_path>`,
@@ -44,10 +48,13 @@ export function buildPeerProgressBlock(
 
 export function buildPreviousOutputsBlock(input: AgentInput): string {
   if (input.previousOutputs.length === 0) return "";
-  const entries = input.previousOutputs.map(
-    (o) =>
-      `  <output agent="${o.agentId}" exitCode="${o.exitCode}" duration="${o.durationMs}ms">\n${truncateText(o.raw, 4000)}\n  </output>`,
-  );
+  const entries = input.previousOutputs.map((o) => {
+    const truncated = o.raw.length > 4000;
+    const content = truncated
+      ? `${o.raw.slice(0, 4000)}\n\n[... ${o.raw.length - 4000} characters truncated ...]`
+      : o.raw;
+    return `  <output agent="${o.agentId}" exitCode="${o.exitCode}" duration="${o.durationMs}ms">\n${content}\n  </output>`;
+  });
   return [`<previous_outputs>`, ...entries, `</previous_outputs>`].join("\n");
 }
 
@@ -55,14 +62,20 @@ export function buildFailedAttemptsBlock(
   failedAttempts: FailedAttempt[],
 ): string {
   if (failedAttempts.length === 0) return "";
-  const entries = failedAttempts.map((fa) =>
-    [
+  const entries = failedAttempts.map((fa) => {
+    const truncated = fa.diff.length > 3000;
+    const diffContent = truncated
+      ? `${fa.diff.slice(0, 3000)}\n\n[... ${fa.diff.length - 3000} characters truncated ...]`
+      : fa.diff;
+    return [
       `  <failed_attempt agent="${fa.agentId}" cycle="${fa.cycle}">`,
-      `    <diff>${truncateText(fa.diff, 3000)}</diff>`,
-      `    <qa_notes>${fa.qaNotes.join(" | ")}</qa_notes>`,
+      `    <diff>${diffContent}</diff>`,
+      `    <qa_notes>`,
+      fa.qaNotes.map((n) => `      - ${n}`).join("\n"),
+      `    </qa_notes>`,
       `  </failed_attempt>`,
-    ].join("\n"),
-  );
+    ].join("\n");
+  });
   return [
     `<previous_failed_attempts>`,
     `  CRITICAL: You MUST NOT repeat any of these previous diffs.`,
@@ -74,5 +87,5 @@ export function buildFailedAttemptsBlock(
 
 export function truncateText(input: string, maxChars: number): string {
   if (input.length <= maxChars) return input;
-  return `${input.slice(0, maxChars)}\n\n[truncated]`;
+  return `${input.slice(0, maxChars)}\n\n[... ${input.length - maxChars} characters truncated ...]`;
 }

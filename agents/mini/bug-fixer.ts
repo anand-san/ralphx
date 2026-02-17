@@ -11,10 +11,15 @@ function buildPrompt(input: AgentInput): string {
   const failedAttempts = buildFailedAttemptsBlock(input.previousFailedAttempts);
 
   const notes = input.previousOutputs
-    .filter((o) => o.parsed && typeof o.parsed === "object")
+    .filter(
+      (o) =>
+        o.parsed &&
+        typeof o.parsed === "object" &&
+        "notes" in (o.parsed as object)
+    )
     .flatMap((o) => {
-      const p = o.parsed as { notes?: string[] };
-      return p.notes ?? [];
+      const p = o.parsed as { notes?: unknown };
+      return Array.isArray(p.notes) ? (p.notes as string[]) : [];
     });
 
   const notesBlock =
@@ -23,7 +28,7 @@ function buildPrompt(input: AgentInput): string {
       : "- (No defects listed)";
 
   return [
-    `Your goal is to fix defects identified by the QA team.`,
+    `You are a bug fixer. Your goal is to fix the specific defects identified by the QA team.`,
     "",
     buildContextBlock(input),
     "",
@@ -31,15 +36,17 @@ function buildPrompt(input: AgentInput): string {
     failedAttempts,
     "",
     `<defects_log>`,
-    `  The QA Team found the following critical issues:`,
+    `  The QA team found the following issues that MUST be fixed:`,
     notesBlock,
     `</defects_log>`,
     "",
     `## Instructions`,
-    `- Fix the specific issues listed in the <defects_log>.`,
-    `- Do not "refactor" for style; focus purely on correctness and functionality.`,
+    `- Fix each specific issue listed in the <defects_log>. Address every item.`,
+    `- Focus purely on correctness and functionality — do not refactor for style.`,
     `- Double-check edge cases that might have caused these bugs.`,
     `- Ensure your fix does not introduce regressions (breaking existing features).`,
+    `- Add or update tests to cover the bug scenario. The test should fail without your fix and pass with it.`,
+    `- Verify all tests pass after your changes.`,
   ].join("\n");
 }
 
