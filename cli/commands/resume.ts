@@ -18,6 +18,7 @@ import { CodexProvider } from "../../runtime/providers/codex";
 import { executeOrchestrator } from "../../orchestrator/orchestrator";
 import { HeartbeatMonitor } from "../../monitor/heartbeat";
 import { Watchdog } from "../../monitor/watchdog";
+import { renderTui } from "../../tui/app";
 
 export async function resumeCommand(options: RunnerOptions): Promise<void> {
   const rootDir = process.cwd();
@@ -97,7 +98,11 @@ export async function resumeCommand(options: RunnerOptions): Promise<void> {
   heartbeat.start();
   watchdog.start();
 
-  console.log(`Resuming RalphX run ${state.runId} on branch ${state.branch}`);
+  if (!options.noTui) {
+    renderTui({ initialState: state, eventBus });
+  } else {
+    console.log(`Resuming RalphX run ${state.runId} on branch ${state.branch}`);
+  }
 
   const onSignal = async (signal: "SIGTERM" | "SIGINT") => {
     state.status = "blocked";
@@ -124,7 +129,7 @@ export async function resumeCommand(options: RunnerOptions): Promise<void> {
       runtime,
       eventBus,
       model: options.model,
-      streamOutput: !options.noTui,
+      streamOutput: !!options.noTui,
       skipQualityGates: options.skipQualityGates,
       timeout: options.timeout,
       teamConfig,

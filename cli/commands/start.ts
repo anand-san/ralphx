@@ -27,6 +27,7 @@ import { CodexProvider } from "../../runtime/providers/codex";
 import { executeOrchestrator } from "../../orchestrator/orchestrator";
 import { HeartbeatMonitor } from "../../monitor/heartbeat";
 import { Watchdog } from "../../monitor/watchdog";
+import { renderTui } from "../../tui/app";
 
 async function loadTasksDocument(path: string): Promise<TasksDocument> {
   const raw = await readFile(path, "utf8");
@@ -159,7 +160,9 @@ export async function startCommand(options: RunnerOptions): Promise<void> {
     await writeFile(paths.pidPath, String(process.pid), "utf8");
   }
 
-  if (!options._daemon) {
+  if (!options.noTui && !options._daemon) {
+    renderTui({ initialState: state, eventBus });
+  } else if (!options._daemon) {
     console.log(`RalphX run ${runId} started on branch ${branch}`);
     console.log(`Runtime: ${options.runtime}`);
     console.log(`Retry limit: ${options.retry}`);
@@ -190,7 +193,7 @@ export async function startCommand(options: RunnerOptions): Promise<void> {
       runtime,
       eventBus,
       model: options.model,
-      streamOutput: !options.noTui,
+      streamOutput: options.noTui || !!options._daemon,
       skipQualityGates: options.skipQualityGates,
       timeout: options.timeout,
       teamConfig,
