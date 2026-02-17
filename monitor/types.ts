@@ -14,6 +14,7 @@ export type EventType =
   | "agent:output"
   | "agent:completed"
   | "decision:made"
+  | "quality-gate:discovered"
   | "quality-gate:running"
   | "quality-gate:passed"
   | "quality-gate:failed"
@@ -75,9 +76,14 @@ export interface DecisionEvent extends BaseEvent {
 }
 
 export interface QualityGateEvent extends BaseEvent {
-  type: "quality-gate:running" | "quality-gate:passed" | "quality-gate:failed";
+  type:
+    | "quality-gate:discovered"
+    | "quality-gate:running"
+    | "quality-gate:passed"
+    | "quality-gate:failed";
   gate?: string;
   details?: string;
+  steps?: Array<{ name: string; cmd: string[] }>;
 }
 
 export interface RunEvent extends BaseEvent {

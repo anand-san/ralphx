@@ -16,6 +16,7 @@ export interface TuiState {
   logs: LogEntry[];
   activity: ActivityEntry[];
   recentDecisions: DecisionEntry[];
+  qualityGateSteps: Array<{ name: string; cmd: string[] }>;
   selectedAgent: string | null;
 }
 
@@ -110,6 +111,7 @@ export function createInitialTuiState(state: RunState): TuiState {
     logs: [],
     activity: [],
     recentDecisions: [],
+    qualityGateSteps: state.qualityGateSteps ?? [],
     selectedAgent: null,
   };
 }
@@ -268,6 +270,19 @@ export function applyEvent(tuiState: TuiState, event: RalphxEvent): TuiState {
           level: "info",
           message: `${event.action}${event.taskId ? ` [${event.taskId}]` : ""}${event.rationale ? ` — ${event.rationale}` : ""}`,
         },
+      ];
+      break;
+    }
+    case "quality-gate:discovered": {
+      const steps = event.steps ?? [];
+      next.qualityGateSteps = steps;
+      const msg =
+        steps.length > 0
+          ? `Discovered ${steps.length} quality gate(s): ${steps.map((s) => s.name).join(", ")}`
+          : "No quality gates discovered for this repo.";
+      next.activity = [
+        ...next.activity.slice(-99),
+        { ts: event.ts, level: "info", message: msg },
       ];
       break;
     }

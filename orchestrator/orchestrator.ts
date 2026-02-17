@@ -205,14 +205,10 @@ async function discoverAndCacheQualityGateSteps(
     });
 
     await eventBus.emit({
-      type: "log:info",
+      type: "quality-gate:discovered",
       ts: new Date().toISOString(),
       runId: state.runId,
-      source: "orchestrator",
-      message:
-        steps.length > 0
-          ? `Discovered ${steps.length} quality gate(s): ${steps.map((s) => s.name).join(", ")}`
-          : "No quality gates discovered for this repo.",
+      steps: state.qualityGateSteps,
     });
   } catch (err) {
     const durationMs = Date.now() - startTime;

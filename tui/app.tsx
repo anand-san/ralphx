@@ -232,6 +232,19 @@ function StatusDetail({ state }: { state: TuiState }) {
       <Text>
         Tasks completed: {state.currentTaskIndex}/{state.totalTasks}
       </Text>
+      <Text> </Text>
+      <Text bold>Quality Gates:</Text>
+      {state.qualityGateSteps.length > 0 ? (
+        state.qualityGateSteps.map((step) => (
+          <Text key={step.name}>
+            {"  "}
+            <Text color="cyan">{step.name.padEnd(12)}</Text>
+            <Text> {step.cmd.join(" ")}</Text>
+          </Text>
+        ))
+      ) : (
+        <Text color="gray">{"  "}(pending discovery)</Text>
+      )}
     </Box>
   );
 }

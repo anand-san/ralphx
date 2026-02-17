@@ -7,6 +7,7 @@ import type {
   TaskEvent,
   LogEvent,
   RunEvent,
+  QualityGateEvent,
 } from "../monitor/types";
 
 function makeState() {
@@ -132,6 +133,29 @@ describe("TUI store", () => {
 
     tui = applyEvent(tui, event);
     expect(tui.status).toBe("completed");
+  });
+
+  it("populates qualityGateSteps on quality-gate:discovered", () => {
+    const state = makeState();
+    let tui = createInitialTuiState(state);
+    expect(tui.qualityGateSteps).toHaveLength(0);
+
+    const event: QualityGateEvent = {
+      type: "quality-gate:discovered",
+      ts: "2026-01-01T10:00:00Z",
+      runId: "test-run",
+      steps: [
+        { name: "format", cmd: ["bun", "run", "format"] },
+        { name: "lint", cmd: ["bun", "run", "lint"] },
+      ],
+    };
+
+    tui = applyEvent(tui, event);
+    expect(tui.qualityGateSteps).toHaveLength(2);
+    expect(tui.qualityGateSteps[0]?.name).toBe("format");
+    expect(tui.qualityGateSteps[1]?.cmd).toEqual(["bun", "run", "lint"]);
+    expect(tui.activity).toHaveLength(1);
+    expect(tui.activity[0]?.message).toContain("Discovered 2 quality gate(s)");
   });
 
   it("appends log entries", () => {
