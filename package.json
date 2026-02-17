@@ -1,0 +1,30 @@
+{
+  "name": "ralphx",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "ralphx": "./cli/index.ts"
+  },
+  "scripts": {
+    "start": "bun cli/index.ts start",
+    "resume": "bun cli/index.ts resume",
+    "attach": "bun cli/index.ts attach",
+    "stop": "bun cli/index.ts stop",
+    "status": "bun cli/index.ts status",
+    "list": "bun cli/index.ts list",
+    "test": "bun test",
+    "format": "prettier --write '**/*.{ts,tsx,json}'"
+  },
+  "dependencies": {
+    "ink": "^4.4.1",
+    "react": "^18.3.1",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "latest",
+    "@types/react": "^18.3.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.0.0"
+  }
+}
