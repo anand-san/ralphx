@@ -51,6 +51,8 @@ export async function resumeCommand(options: RunnerOptions): Promise<void> {
     for (const task of state.tasks) {
       if (task.status === "blocked") {
         task.status = "pending";
+        task.attempts = 0;
+        task.lastError = undefined;
       }
     }
     for (const phase of state.phases) {
