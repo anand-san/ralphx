@@ -27,17 +27,17 @@ describe("error categories", () => {
 });
 
 describe("recovery strategy", () => {
-  it("returns retry for runtime crash", () => {
-    expect(getRecoveryStrategy("runtime_crash", 0)).toBe("retry_with_context");
+  it("returns planner_decides for runtime crash", () => {
+    expect(getRecoveryStrategy("runtime_crash", 0)).toBe("planner_decides");
   });
 
   it("escalates after max retries", () => {
     expect(getRecoveryStrategy("runtime_crash", 3)).toBe("escalate_to_em");
   });
 
-  it("returns auto_fix for format/lint", () => {
-    expect(getRecoveryStrategy("gate_format", 0)).toBe("auto_fix_retry");
-    expect(getRecoveryStrategy("gate_lint", 0)).toBe("auto_fix_retry");
+  it("returns planner_decides for format/lint", () => {
+    expect(getRecoveryStrategy("gate_format", 0)).toBe("planner_decides");
+    expect(getRecoveryStrategy("gate_lint", 0)).toBe("planner_decides");
   });
 
   it("returns block for non-recoverable", () => {

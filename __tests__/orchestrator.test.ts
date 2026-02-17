@@ -168,6 +168,13 @@ function createMockDeps(
   };
 }
 
+const WRITE_CAPABLE_AGENTS = new Set([
+  "software-developer",
+  "software-architect",
+  "refactorer",
+  "bug-fixer",
+]);
+
 function registerTestAgents() {
   const agentIds = [
     "orchestrator-planner",
@@ -186,8 +193,12 @@ function registerTestAgents() {
       registerAgent({
         id,
         name: id,
-        capabilities: ["read"],
-        defaultSandbox: "read-only",
+        capabilities: WRITE_CAPABLE_AGENTS.has(id)
+          ? ["read", "write", "execute"]
+          : ["read"],
+        defaultSandbox: WRITE_CAPABLE_AGENTS.has(id)
+          ? "workspace-write"
+          : "read-only",
         buildPrompt: () => "test prompt",
       });
     }

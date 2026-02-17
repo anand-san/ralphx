@@ -91,3 +91,66 @@ export const teamConfigSchema = z.object({
   roles: z.array(teamRoleSchema).min(1),
   workflow: workflowSchema.optional(),
 });
+
+// ── Run state validation ──
+
+const agentRuntimeStateSchema = z.object({
+  agentId: z.string(),
+  taskId: z.string(),
+  phaseId: z.string(),
+  pid: z.number().optional(),
+  runtime: z.enum(["claude-code", "codex"]),
+  status: z.enum(["idle", "running", "completed", "failed", "timeout"]),
+  startedAt: z.string().optional(),
+  completedAt: z.string().optional(),
+  lastHeartbeat: z.string().optional(),
+  progressPath: z.string().optional(),
+  exitCode: z.number().optional(),
+  error: z.string().optional(),
+});
+
+const taskRuntimeStateSchema = z.object({
+  id: z.string(),
+  phaseId: z.string(),
+  title: z.string(),
+  status: z.enum(["pending", "running", "passed", "failed", "blocked"]),
+  attempts: z.number(),
+  lastError: z.string().optional(),
+  lastExitCode: z.number().optional(),
+  lastQualityGate: z.string().optional(),
+  lastCommit: z.string().optional(),
+  changedFiles: z.array(z.string()),
+  lastLogPath: z.string().optional(),
+  lastMessagePath: z.string().optional(),
+  currentAgent: z.string().optional(),
+  qaCycles: z.number(),
+});
+
+const phaseRuntimeStateSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  status: z.enum(["pending", "in_progress", "completed", "blocked"]),
+});
+
+export const runStateSchema = z.object({
+  schemaVersion: z.literal(2),
+  runId: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  status: z.enum(["running", "completed", "blocked"]),
+  branch: z.string(),
+  retryLimit: z.number(),
+  defaultRuntime: z.enum(["claude-code", "codex"]),
+  teamConfigPath: z.string().optional(),
+  runDir: z.string(),
+  sourcesDir: z.string(),
+  decisionsDir: z.string(),
+  progressDir: z.string(),
+  logDir: z.string(),
+  messageDir: z.string(),
+  handoffPath: z.string(),
+  eventsPath: z.string(),
+  phases: z.array(phaseRuntimeStateSchema),
+  tasks: z.array(taskRuntimeStateSchema),
+  agents: z.array(agentRuntimeStateSchema),
+});

@@ -20,6 +20,8 @@ function buildPrompt(input: AgentInput): string {
     `- Acceptance criteria (bulleted list)`,
     `- Out-of-scope items`,
     `- Known edge cases`,
+    "",
+    `End your response with a <summary> section of no more than 5000 characters that captures your key findings, decisions, and recommendations.`,
   ].join("\n");
 }
 

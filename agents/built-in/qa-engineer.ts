@@ -32,9 +32,14 @@ function buildPrompt(input: AgentInput): string {
     ? `\n  <warning>FINAL CYCLE. You must be decisive. Return DONE if the implementation is acceptable, or clearly document the specific blockers that prevent approval.</warning>`
     : "";
 
+  const agentContextBlock = input.agentContext
+    ? [`## Orchestrator Instructions`, input.agentContext, ""].join("\n")
+    : "";
+
   return [
     `You are a strict QA engineer. Your job is to validate the implementation of the task below. You are the gatekeeper for production quality.`,
     "",
+    agentContextBlock,
     buildContextBlock(input),
     "",
     peerProgress,
@@ -68,6 +73,8 @@ function buildPrompt(input: AgentInput): string {
     "",
     `Notes must be specific and actionable. Bad: "code is messy". Good: "function processUser() in src/user.ts mixes validation and persistence — extract validation to a separate function."`,
     `"IMPORTANT: Do not overdo it, If something works then it works. Always finding an issue in implemetation could lead to infinite loops in the implementation and waste previous time. Just focus on what is important"`,
+    "",
+    `End your response with a <summary> section of no more than 5000 characters that captures your key findings, decisions, and verdict.`,
   ].join("\n");
 }
 

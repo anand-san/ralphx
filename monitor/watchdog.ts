@@ -6,11 +6,17 @@ const FORCE_KILL_GRACE_MS = 5000;
 export class Watchdog {
   private eventBus: EventBus;
   private state: RunState;
+  private saveState: () => Promise<void>;
   private unsubscribe: (() => void) | null = null;
 
-  constructor(params: { eventBus: EventBus; state: RunState }) {
+  constructor(params: {
+    eventBus: EventBus;
+    state: RunState;
+    saveState: () => Promise<void>;
+  }) {
     this.eventBus = params.eventBus;
     this.state = params.state;
+    this.saveState = params.saveState;
   }
 
   start(): void {
@@ -53,6 +59,11 @@ export class Watchdog {
       agent.status = "timeout";
       agent.completedAt = new Date().toISOString();
     }
+
+    // Persist state update
+    this.saveState().catch(() => {
+      // State saving shouldn't crash the watchdog
+    });
 
     this.eventBus.emit({
       type: "log:warn",

@@ -26,6 +26,8 @@ function buildPrompt(input: AgentInput): string {
     `- Overall assessment (approve/request-changes)`,
     `- List of specific issues (if any)`,
     `- Suggestions for improvement (if any)`,
+    "",
+    `End your response with a <summary> section of no more than 5000 characters that captures your key findings, decisions, and recommendations.`,
   ].join("\n");
 }
 

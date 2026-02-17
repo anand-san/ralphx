@@ -81,18 +81,18 @@ export async function runProcess(
         ]),
         timeoutPromise,
       ]);
-      return { exitCode, stdout, stderr };
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message.includes("Process timed out")
-      ) {
-        throw error;
-      }
-      throw error;
-    } finally {
       clearTimeout(outerTimer);
       clearTimeout(killTimer);
+      return { exitCode, stdout, stderr };
+    } catch (error) {
+      clearTimeout(outerTimer);
+      // DO NOT clear killTimer -- let SIGKILL fire after grace period
+      // Wait for the process to be reaped (with a safety cap)
+      await Promise.race([
+        proc.exited,
+        new Promise((r) => setTimeout(r, 10_000)),
+      ]);
+      throw error;
     }
   }
 

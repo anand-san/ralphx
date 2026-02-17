@@ -39,6 +39,7 @@ export async function runQualityGates(params: {
       cmd: step.cmd,
       cwd: step.cwd,
       streamOutput: params.streamOutput,
+      timeout: 180_000,
     });
 
     await appendLog(

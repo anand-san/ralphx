@@ -27,9 +27,14 @@ function buildPrompt(input: AgentInput): string {
       ? notes.map((note) => `- ${note}`).join("\n")
       : "- (No refactor instructions)";
 
+  const agentContextBlock = input.agentContext
+    ? [`## Orchestrator Instructions`, input.agentContext, ""].join("\n")
+    : "";
+
   return [
     `You are a code refactorer. Your goal is to improve code structure and quality WITHOUT changing functional behavior.`,
     "",
+    agentContextBlock,
     buildContextBlock(input),
     "",
     peerProgress,
@@ -46,6 +51,8 @@ function buildPrompt(input: AgentInput): string {
     `- Maintain all existing types and interfaces unless explicitly asked to change them.`,
     `- After refactoring, verify that existing tests still pass. Do not break working functionality.`,
     `- Keep changes minimal and focused on the requested improvements.`,
+    "",
+    `End your response with a <summary> section of no more than 5000 characters that captures your key findings, decisions, and changes made.`,
   ].join("\n");
 }
 

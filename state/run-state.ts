@@ -1,6 +1,7 @@
-import { mkdir, readFile, writeFile, copyFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, copyFile, rename } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { RunState, RuntimeName, TasksDocument } from "./types";
+import { runStateSchema } from "../config/schema";
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -128,16 +129,13 @@ export async function saveRunState(
 ): Promise<void> {
   state.updatedAt = isoNow();
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  const tmpPath = `${path}.tmp`;
+  await writeFile(tmpPath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  await rename(tmpPath, path);
 }
 
 export async function loadRunState(path: string): Promise<RunState> {
   const raw = await readFile(path, "utf8");
-  const parsed = JSON.parse(raw) as RunState;
-  if (parsed.schemaVersion !== 2) {
-    throw new Error(
-      `Unsupported state schema version: ${parsed.schemaVersion}. Expected 2.`,
-    );
-  }
-  return parsed;
+  const json = JSON.parse(raw) as unknown;
+  return runStateSchema.parse(json);
 }

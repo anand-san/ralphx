@@ -8,6 +8,8 @@ export class HeartbeatMonitor {
   private intervalMs: number;
   private agentTimeouts: Map<string, number> = new Map();
   private defaultTimeout: number;
+  private timedOutAgents = new Set<string>();
+  private warnedAgents = new Set<string>();
 
   constructor(params: {
     eventBus: EventBus;
@@ -42,6 +44,13 @@ export class HeartbeatMonitor {
 
   unregisterAgent(agentId: string): void {
     this.agentTimeouts.delete(agentId);
+    this.timedOutAgents.delete(agentId);
+    this.warnedAgents.delete(agentId);
+  }
+
+  resetForTask(): void {
+    this.timedOutAgents.clear();
+    this.warnedAgents.clear();
   }
 
   private check(): void {
@@ -51,13 +60,18 @@ export class HeartbeatMonitor {
       if (agent.status !== "running") continue;
       if (!agent.startedAt) continue;
 
-      const startedAt = new Date(agent.startedAt).getTime();
+      const referenceTime = agent.lastHeartbeat ?? agent.startedAt;
       const timeout =
         this.agentTimeouts.get(agent.agentId) ?? this.defaultTimeout;
-      const elapsed = now - startedAt;
+      const elapsed = now - new Date(referenceTime).getTime();
 
-      // 80% warning
-      if (elapsed > timeout * 0.8 && elapsed < timeout) {
+      // 80% warning (deduplicated)
+      if (
+        elapsed > timeout * 0.8 &&
+        elapsed < timeout &&
+        !this.warnedAgents.has(agent.agentId)
+      ) {
+        this.warnedAgents.add(agent.agentId);
         this.eventBus.emit({
           type: "process:warning",
           ts: new Date().toISOString(),
@@ -68,8 +82,9 @@ export class HeartbeatMonitor {
         });
       }
 
-      // Timeout exceeded
-      if (elapsed >= timeout) {
+      // Timeout exceeded (deduplicated)
+      if (elapsed >= timeout && !this.timedOutAgents.has(agent.agentId)) {
+        this.timedOutAgents.add(agent.agentId);
         this.eventBus.emit({
           type: "process:timeout",
           ts: new Date().toISOString(),

@@ -170,6 +170,7 @@ export interface AgentInput {
   peerProgress: Map<string, string>;
   previousFailedAttempts: FailedAttempt[];
   failureContext?: string;
+  agentContext?: string;
   attempt: number;
   maxAttempts: number;
 }

@@ -25,9 +25,14 @@ function buildPrompt(input: AgentInput): string {
   const previousOutputs = buildPreviousOutputsBlock(input);
   const failedAttempts = buildFailedAttemptsBlock(input.previousFailedAttempts);
 
+  const agentContextBlock = input.agentContext
+    ? [`## Orchestrator Instructions`, input.agentContext, ""].join("\n")
+    : "";
+
   return [
     `You are a senior software developer. Your goal is to implement the task defined in the context below.`,
     "",
+    agentContextBlock,
     retryContext,
     "",
     buildContextBlock(input),
@@ -52,6 +57,7 @@ function buildPrompt(input: AgentInput): string {
     "",
     `## Output`,
     `Provide a summary of what you changed, which files were modified, and confirm you verified the requirements.`,
+    `End your response with a <summary> section of no more than 5000 characters that captures your key findings, decisions, and changes made.`,
   ]
     .filter((line) => line !== "")
     .join("\n");

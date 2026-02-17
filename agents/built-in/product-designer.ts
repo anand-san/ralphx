@@ -21,6 +21,8 @@ function buildPrompt(input: AgentInput): string {
     `- Layout structure`,
     `- Interaction patterns`,
     `- Accessibility considerations`,
+    "",
+    `End your response with a <summary> section of no more than 5000 characters that captures your key findings, decisions, and recommendations.`,
   ].join("\n");
 }
 

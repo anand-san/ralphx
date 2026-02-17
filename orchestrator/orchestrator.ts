@@ -274,7 +274,7 @@ async function escalateToEM(
     timeout?: number;
   },
   deps: OrchestratorDependencies,
-): Promise<void> {
+): Promise<AgentOutput | null> {
   try {
     const emAgent = getAgent("engineering-manager");
     const emInput: AgentInput = {
@@ -316,8 +316,11 @@ async function escalateToEM(
       message: `EM escalation for ${params.planTask.id}: ${emOutput.raw.slice(0, 200)}`,
       source: "engineering-manager",
     });
+
+    return emOutput;
   } catch (err) {
     console.error("EM escalation failed (best-effort):", err);
+    return null;
   }
 }
 
@@ -829,6 +832,19 @@ async function executeTaskFlow(
         continue;
       }
 
+      // Guard: verify agent exists before dispatching
+      if (!hasAgent(agentId)) {
+        lastFailure = `Planner recommended non-existent agent "${agentId}"`;
+        await eventBus.emit({
+          type: "log:warn",
+          ts: new Date().toISOString(),
+          runId: state.runId,
+          source: "orchestrator",
+          message: lastFailure,
+        });
+        continue;
+      }
+
       // Cycle detection
       agentHistory.push(agentId);
       if (detectAgentCycle(agentHistory)) {
@@ -864,7 +880,7 @@ async function executeTaskFlow(
         );
       }
 
-      // Run the agent
+      // Run the agent (wrapped in try/catch to prevent orchestrator crash)
       const agent = getAgent(agentId);
       const agentInput: AgentInput = {
         task: planTask,
@@ -875,21 +891,38 @@ async function executeTaskFlow(
         peerProgress: agentPeerProgress,
         previousFailedAttempts: failedAttempts,
         failureContext: lastFailure || undefined,
+        agentContext: recommendation.recommendation.agentContext,
         attempt,
         maxAttempts,
       };
 
-      const output = await deps.runAgent({
-        agent,
-        input: agentInput,
-        runtime,
-        state,
-        stepSequence,
-        eventBus,
-        model: params.model,
-        streamOutput: params.streamOutput,
-        timeout: params.timeout,
-      });
+      let output: AgentOutput;
+      try {
+        output = await deps.runAgent({
+          agent,
+          input: agentInput,
+          runtime,
+          state,
+          stepSequence,
+          eventBus,
+          model: params.model,
+          streamOutput: params.streamOutput,
+          timeout: params.timeout,
+        });
+      } catch (runError) {
+        const category: FailureCategory = "runtime_crash";
+        lastFailure = `${agentId} crashed: ${runError instanceof Error ? runError.message : String(runError)}`;
+        taskState.lastError = lastFailure;
+        await deps.saveRunState(statePath, state);
+        await eventBus.emit({
+          type: "log:error",
+          ts: new Date().toISOString(),
+          runId: state.runId,
+          source: "orchestrator",
+          message: lastFailure,
+        });
+        continue;
+      }
 
       // Handle agent failure
       if (output.exitCode !== 0) {
@@ -924,7 +957,7 @@ async function executeTaskFlow(
           };
         }
         if (strategy === "escalate_to_em") {
-          await escalateToEM(
+          const emOutput = await escalateToEM(
             {
               state,
               phase,
@@ -939,8 +972,11 @@ async function executeTaskFlow(
             },
             deps,
           );
+          if (emOutput?.raw) {
+            lastFailure = `${lastFailure}\n\nEM recommendation: ${emOutput.raw}`;
+          }
         }
-        // Let planner re-evaluate
+        // All other strategies (planner_decides) — let planner re-evaluate
         continue;
       }
 
@@ -949,7 +985,8 @@ async function executeTaskFlow(
       // POST-AGENT INVARIANTS
 
       // After write agents: check changed files + quality gates
-      if (WRITE_AGENT_IDS.has(agentId) && !params.skipQualityGates) {
+      const agentDef = getAgent(agentId);
+      if (agentDef.capabilities.includes("write") && !params.skipQualityGates) {
         const writeChangedFiles = await deps.listChangedFiles(rootDir);
 
         if (writeChangedFiles.length === 0) {

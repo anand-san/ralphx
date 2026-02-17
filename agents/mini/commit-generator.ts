@@ -15,12 +15,16 @@ function buildPrompt(input: AgentInput): string {
 
   const changedFiles = changedFilesRaw?.split("\n").filter(Boolean) ?? [];
 
-  return buildCommitMessagePrompt({
-    task: { title: input.task.title },
-    changedFiles,
-    diffStat,
-    diffPatch,
-  });
+  return [
+    buildCommitMessagePrompt({
+      task: { title: input.task.title },
+      changedFiles,
+      diffStat,
+      diffPatch,
+    }),
+    "",
+    `End your response with a <summary> section of no more than 5000 characters that captures the commit message you generated.`,
+  ].join("\n");
 }
 
 export const commitGenerator: AgentDefinition = {

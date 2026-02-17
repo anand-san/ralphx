@@ -45,7 +45,9 @@ export async function runAgent(
     status: "running",
     startedAt: new Date().toISOString(),
   };
-  const existingIdx = state.agents.findIndex((a) => a.agentId === agent.id);
+  const existingIdx = state.agents.findIndex(
+    (a) => a.agentId === agent.id && a.taskId === input.task.id,
+  );
   if (existingIdx >= 0) {
     state.agents[existingIdx] = agentEntry;
   } else {
@@ -112,7 +114,9 @@ export async function runAgent(
   }
 
   // Update agent entry in state.agents[]
-  const completedEntry = state.agents.find((a) => a.agentId === agent.id);
+  const completedEntry = state.agents.find(
+    (a) => a.agentId === agent.id && a.taskId === input.task.id,
+  );
   if (completedEntry) {
     completedEntry.status = result.exitCode === 0 ? "completed" : "failed";
     completedEntry.completedAt = new Date().toISOString();

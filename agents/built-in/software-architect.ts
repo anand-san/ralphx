@@ -86,6 +86,8 @@ function buildPrompt(input: AgentInput): string {
           "",
           `End with a summary section listing the most critical gaps that should be addressed before development begins.`,
         ]),
+    "",
+    `End your response with a <summary> section of no more than 5000 characters that captures your key findings, decisions, and changes made.`,
   ]
     .filter((line) => line !== "")
     .join("\n");

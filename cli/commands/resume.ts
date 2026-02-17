@@ -93,7 +93,11 @@ export async function resumeCommand(options: RunnerOptions): Promise<void> {
     intervalMs: options.heartbeatInterval,
     defaultTimeout: options.timeout,
   });
-  const watchdog = new Watchdog({ eventBus, state });
+  const watchdog = new Watchdog({
+    eventBus,
+    state,
+    saveState: () => saveRunState(statePath, state),
+  });
 
   heartbeat.start();
   watchdog.start();

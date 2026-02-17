@@ -21,6 +21,8 @@ function buildPrompt(input: AgentInput): string {
     `3. Do NOT create new documentation files unless absolutely necessary.`,
     `4. Keep documentation concise and accurate.`,
     `5. Only update docs that are directly affected by the changes.`,
+    "",
+    `End your response with a <summary> section of no more than 5000 characters that captures your key findings, decisions, and changes made.`,
   ].join("\n");
 }
 

@@ -46,13 +46,36 @@ export function buildPeerProgressBlock(
   return [`<peer_progress>`, ...entries, `</peer_progress>`].join("\n");
 }
 
+export function extractSummaryOrTruncate(
+  raw: string,
+  maxChars: number,
+): string {
+  const summaryMatch = raw.match(/<summary>([\s\S]*?)<\/summary>/);
+  if (summaryMatch?.[1]) {
+    const summary = summaryMatch[1].trim();
+    return summary.length <= maxChars
+      ? summary
+      : truncateText(summary, maxChars);
+  }
+  return truncateText(raw, maxChars);
+}
+
+const MAX_TOTAL_OUTPUTS_CHARS = 40_000;
+
 export function buildPreviousOutputsBlock(input: AgentInput): string {
   if (input.previousOutputs.length === 0) return "";
+
+  let totalChars = 0;
   const entries = input.previousOutputs.map((o) => {
-    const truncated = o.raw.length > 4000;
-    const content = truncated
-      ? `${o.raw.slice(0, 4000)}\n\n[... ${o.raw.length - 4000} characters truncated ...]`
-      : o.raw;
+    const budget = Math.max(
+      2000,
+      Math.floor(
+        (MAX_TOTAL_OUTPUTS_CHARS - totalChars) /
+          Math.max(1, input.previousOutputs.length),
+      ),
+    );
+    const content = extractSummaryOrTruncate(o.raw, budget);
+    totalChars += content.length;
     return `  <output agent="${o.agentId}" exitCode="${o.exitCode}" duration="${o.durationMs}ms">\n${content}\n  </output>`;
   });
   return [`<previous_outputs>`, ...entries, `</previous_outputs>`].join("\n");

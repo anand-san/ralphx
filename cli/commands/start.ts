@@ -64,6 +64,28 @@ export async function startCommand(options: RunnerOptions): Promise<void> {
     await ensureCleanWorkingTree(rootDir);
   }
 
+  // Detached mode: spawn daemon child and exit parent BEFORE any init
+  if (options.detached && !options._daemon) {
+    // Build child args: same args minus --detached, plus --_daemon
+    const childArgs = process.argv
+      .slice(1)
+      .filter((a) => a !== "--detached")
+      .concat("--_daemon");
+
+    const child = spawn(process.argv[0]!, childArgs, {
+      stdio: ["ignore", "ignore", "ignore"],
+      detached: true,
+      cwd: rootDir,
+    });
+    child.unref();
+
+    console.log(`RalphX daemon started (PID ${child.pid})`);
+    console.log(
+      `The daemon will create its own run ID and log it to its log file.`,
+    );
+    process.exit(0);
+  }
+
   // Initialize
   const runId = buildRunId();
   const paths = buildRunPaths(rootDir, runId);
@@ -122,42 +144,22 @@ export async function startCommand(options: RunnerOptions): Promise<void> {
     intervalMs: options.heartbeatInterval,
     defaultTimeout: options.timeout,
   });
-  const watchdog = new Watchdog({ eventBus, state });
+  const watchdog = new Watchdog({
+    eventBus,
+    state,
+    saveState: () => saveRunState(paths.statePath, state),
+  });
 
   heartbeat.start();
   watchdog.start();
 
-  // Detached mode: spawn daemon child and exit parent
-  if (options.detached && !options._daemon) {
-    const logPath = join(paths.runDir, "daemon.log");
-    const logFd = await open(logPath, "w");
-    const logStream = logFd.createWriteStream();
-
-    // Build child args: same args minus --detached, plus --_daemon
-    const childArgs = process.argv
-      .slice(1)
-      .filter((a) => a !== "--detached")
-      .concat("--_daemon");
-
-    const child = spawn(process.argv[0]!, childArgs, {
-      stdio: ["ignore", logStream, logStream],
-      detached: true,
-      cwd: rootDir,
-    });
-    child.unref();
-
-    await writeFile(paths.pidPath, String(child.pid), "utf8");
-    console.log(`RalphX daemon started (PID ${child.pid})`);
-    console.log(`Run ID: ${runId}`);
-    console.log(`Log: ${logPath}`);
-    console.log(`Attach: ralphx attach --run ${runId}`);
-    process.exit(0);
-  }
-
   // Daemon child: ignore SIGHUP so it survives terminal close
   if (options._daemon) {
     process.on("SIGHUP", () => {});
+    const logPath = join(paths.runDir, "daemon.log");
     await writeFile(paths.pidPath, String(process.pid), "utf8");
+    console.log(`Daemon run ID: ${runId}`);
+    console.log(`Log: ${logPath}`);
   }
 
   if (!options.noTui && !options._daemon) {
