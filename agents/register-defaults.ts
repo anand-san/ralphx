@@ -4,6 +4,7 @@ import { qaEngineer } from "./built-in/qa-engineer";
 import { engineeringManager } from "./built-in/engineering-manager";
 import { productManager } from "./built-in/product-manager";
 import { productDesigner } from "./built-in/product-designer";
+import { softwareArchitect } from "./built-in/software-architect";
 import { orchestratorPlanner } from "./mini/orchestrator-planner";
 import { commitGenerator } from "./mini/commit-generator";
 import { codeReviewer } from "./mini/code-reviewer";
@@ -17,6 +18,7 @@ const defaultAgents = [
   engineeringManager,
   productManager,
   productDesigner,
+  softwareArchitect,
   orchestratorPlanner,
   commitGenerator,
   codeReviewer,

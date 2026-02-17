@@ -221,6 +221,7 @@ export type PlannerAction =
 
 export const WRITE_AGENT_IDS = new Set([
   "software-developer",
+  "software-architect",
   "refactorer",
   "bug-fixer",
 ]);

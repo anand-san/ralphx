@@ -18,6 +18,9 @@ function buildWorkflowStage(input: AgentInput): string {
     `- PD consulted: ${agentsDone.has("product-designer") ? "yes" : "no"}`,
   );
   lines.push(
+    `- ARCH consulted: ${agentsDone.has("software-architect") ? "yes" : "no"}`,
+  );
+  lines.push(
     `- DEV completed: ${agentsDone.has("software-developer") || agentsDone.has("refactorer") || agentsDone.has("bug-fixer") ? "yes" : "no"}`,
   );
   lines.push(`- QA cycles: ${qaCount}`);
@@ -72,7 +75,7 @@ function buildPrompt(input: AgentInput): string {
     workflowStage,
     "",
     `## Typical Workflow`,
-    `The standard workflow is: product-manager (refine requirements, optional) → product-designer (UI guidance, optional) → software-developer (implement) → quality gates (auto) → qa-engineer (review) → fix agent if needed → commit.`,
+    `The standard workflow is: software-architect (audit/setup, first task only) → product-manager (refine requirements, optional) → product-designer (UI guidance, optional) → software-developer (implement) → quality gates (auto) → qa-engineer (review) → fix agent if needed → commit.`,
     `PM and PD are optional advisory steps before implementation. DEV must run before QA.`,
     "",
     `## Constraints`,
@@ -80,6 +83,7 @@ function buildPrompt(input: AgentInput): string {
     `- product-manager and product-designer are optional pre-dev advisory agents — skip them for straightforward tasks.`,
     `- Maximum QA cycles is enforced externally — focus on choosing the right fix agent when QA reports issues.`,
     `- When QA returns DONE, use "task_complete" action.`,
+    `- software-architect is for infrastructure auditing/setup. Consider dispatching it before the first software-developer run, or when infrastructure problems are detected. Use agentContext to specify "audit" (default) or "setup: <specific instructions>".`,
     "",
     `## Plan File: ${input.planPath}`,
     `## Tasks File: ${input.tasksPath}`,
@@ -101,7 +105,7 @@ function buildPrompt(input: AgentInput): string {
     `  "contextBriefing": "Compact summary of run progress so far...",`,
     `  "recommendation": {`,
     `    "action": "dispatch_agent" | "skip_task" | "block_task" | "retry_task" | "task_complete",`,
-    `    "agentId": "software-developer" | "refactorer" | "bug-fixer" | "qa-engineer" | "engineering-manager" | "product-manager" | "product-designer",`,
+    `    "agentId": "software-architect" | "software-developer" | "refactorer" | "bug-fixer" | "qa-engineer" | "engineering-manager" | "product-manager" | "product-designer",`,
     `    "taskId": "task-xxx",`,
     `    "rationale": "Why this action — be specific",`,
     `    "agentContext": "Specific instructions or focus areas for the dispatched agent",`,

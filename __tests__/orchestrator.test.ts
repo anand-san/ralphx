@@ -179,6 +179,7 @@ function registerTestAgents() {
     "engineering-manager",
     "product-manager",
     "product-designer",
+    "software-architect",
   ];
   for (const id of agentIds) {
     if (!hasAgent(id)) {
@@ -351,8 +352,9 @@ describe("resolveAgentIds", () => {
 });
 
 describe("WRITE_AGENT_IDS", () => {
-  it("includes the three write agents", () => {
+  it("includes the write agents", () => {
     expect(WRITE_AGENT_IDS.has("software-developer")).toBe(true);
+    expect(WRITE_AGENT_IDS.has("software-architect")).toBe(true);
     expect(WRITE_AGENT_IDS.has("refactorer")).toBe(true);
     expect(WRITE_AGENT_IDS.has("bug-fixer")).toBe(true);
   });
