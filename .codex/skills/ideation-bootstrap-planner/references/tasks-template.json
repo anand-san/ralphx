@@ -5,16 +5,48 @@
   "phases": [
     {
       "id": "phase-1",
-      "name": "Auth Setup",
-      "goal": "Set up authentication layer",
-      "exitCriteria": ["Auth middleware works", "Tests pass"],
+      "name": "Auth Foundation",
+      "goal": "Set up authentication primitives and middleware",
+      "exitCriteria": [
+        "Auth middleware validates tokens",
+        "Login endpoint returns a JWT",
+        "Protected route rejects unauthenticated requests",
+        "Tests pass for all three tasks"
+      ],
       "tasks": [
         {
           "id": "task-1-1",
           "status": "todo",
+          "title": "Define User model and auth schema",
+          "description": "Create src/db/schema/user.ts with User model (id, email, passwordHash, createdAt). Add a migration file in src/db/migrations/. Target files: src/db/schema/user.ts, src/db/migrations/001_create_users.sql.",
+          "notes": ["Include unique constraint on email"]
+        },
+        {
+          "id": "task-1-2",
+          "status": "todo",
+          "title": "Create login API route",
+          "description": "Add POST /api/auth/login in src/app/api/auth/login/route.ts. Accept email and password, verify against User model, return a signed JWT. Target files: src/app/api/auth/login/route.ts.",
+          "notes": [
+            "Use existing JWT_SECRET from env config",
+            "Add tests for valid credentials and invalid credentials"
+          ]
+        },
+        {
+          "id": "task-1-3",
+          "status": "todo",
           "title": "Create auth middleware",
-          "description": "Implement auth middleware with validation and error handling.",
-          "notes": ["Add tests for happy and error paths"]
+          "description": "Implement middleware in src/middleware/auth.ts that extracts the JWT from the Authorization header, verifies it, and attaches the user to the request context. Target files: src/middleware/auth.ts.",
+          "notes": [
+            "Return 401 for missing or invalid tokens",
+            "Add tests for happy path and expired token"
+          ]
+        },
+        {
+          "id": "task-1-4",
+          "status": "todo",
+          "title": "Wire auth middleware into protected routes",
+          "description": "Apply auth middleware to the existing /api/todos and /api/folders route groups in src/app/api/todos/route.ts and src/app/api/folders/route.ts. Target files: src/app/api/todos/route.ts, src/app/api/folders/route.ts.",
+          "notes": ["Verify unauthenticated requests return 401"]
         }
       ]
     }
