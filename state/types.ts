@@ -210,6 +210,21 @@ export interface RunnerOptions {
   runId?: string;
 }
 
+// ── Planner types ──
+
+export type PlannerAction =
+  | "dispatch_agent"
+  | "retry_task"
+  | "skip_task"
+  | "block_task"
+  | "task_complete";
+
+export const WRITE_AGENT_IDS = new Set([
+  "software-developer",
+  "refactorer",
+  "bug-fixer",
+]);
+
 // ── Decision log types ──
 
 export type DecisionAction =
@@ -223,7 +238,9 @@ export type DecisionAction =
   | "run_blocked"
   | "retry"
   | "skip"
-  | "escalate";
+  | "escalate"
+  | "planner_consulted"
+  | "planner_fallback";
 
 export interface Decision {
   ts: string;

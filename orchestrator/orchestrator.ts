@@ -3,20 +3,23 @@ import type { EventBus } from "../monitor/event-bus";
 import type {
   AgentInput,
   AgentOutput,
-  Decision,
   FailedAttempt,
   FailureCategory,
   PlanPhase,
   PlanTask,
+  PlannerRecommendation,
   RunState,
   TasksDocument,
+  VerifierStatus,
 } from "../state/types";
+import { WRITE_AGENT_IDS } from "../state/types";
 import type { TeamConfig } from "../config/types";
-import { getAgent } from "../agents/registry";
+import { getAgent, hasAgent } from "../agents/registry";
 import { runAgent } from "../agents/agent-runner";
 import { appendDecision } from "./decision-log";
-import { findNextTask, isRunBlocked, isRunFinished } from "./scheduler";
+import { isRunFinished } from "./scheduler";
 import {
+  consultPlanner,
   getSourcesPlanPath,
   getSourcesTasksPath,
   markTaskDoneInSources,
@@ -40,10 +43,11 @@ import {
   stagedDiff,
   stagedDiffStat,
 } from "../git/operations";
-import { getRecoveryStrategy, type RecoveryStrategy } from "../errors/recovery";
+import { getRecoveryStrategy } from "../errors/recovery";
 import { categorizeQualityGateFailure } from "../errors/categories";
 
 const MAX_QA_CYCLES = 5;
+const MAX_PLANNER_STEPS = 20;
 
 export interface OrchestratorParams {
   rootDir: string;
@@ -59,7 +63,7 @@ export interface OrchestratorParams {
   teamConfig?: TeamConfig;
 }
 
-function resolveAgentIds(teamConfig?: TeamConfig): {
+export function resolveAgentIds(teamConfig?: TeamConfig): {
   implementer: string;
   reviewer: string;
 } {
@@ -88,6 +92,7 @@ export interface OrchestratorDependencies {
   appendDecision: typeof appendDecision;
   writeHandoff: typeof writeHandoff;
   runAgent: typeof runAgent;
+  consultPlanner: typeof consultPlanner;
 }
 
 const defaultDeps: OrchestratorDependencies = {
@@ -103,6 +108,7 @@ const defaultDeps: OrchestratorDependencies = {
   appendDecision,
   writeHandoff,
   runAgent,
+  consultPlanner,
 };
 
 export async function executeOrchestrator(
@@ -214,12 +220,30 @@ export async function executeOrchestrator(
   }
 }
 
+// ── Types ──
+
 interface TaskFlowResult {
   success: boolean;
   commitHash?: string;
   failureCategory?: FailureCategory;
   failureDetails?: string;
 }
+
+interface QualityGateCheckResult {
+  passed: boolean;
+  failureDetails?: string;
+  failedStep?: string;
+  category?: FailureCategory;
+  strategy?: string;
+}
+
+interface CommitResult {
+  success: boolean;
+  commitHash?: string;
+  error?: string;
+}
+
+// ── Extracted helpers ──
 
 async function escalateToEM(
   params: {
@@ -282,6 +306,312 @@ async function escalateToEM(
   }
 }
 
+export async function runQualityGateCheck(
+  params: {
+    rootDir: string;
+    state: RunState;
+    phase: PlanPhase;
+    planTask: PlanTask;
+    attempt: number;
+    stepSequence: number;
+    streamOutput: boolean;
+    eventBus: EventBus;
+  },
+  deps: OrchestratorDependencies,
+): Promise<QualityGateCheckResult> {
+  const artifacts = buildStepArtifacts({
+    state: params.state,
+    phaseId: params.phase.id,
+    taskId: params.planTask.id,
+    attempt: params.attempt,
+    stepSequence: params.stepSequence,
+    agent: "quality-gates",
+  });
+
+  await params.eventBus.emit({
+    type: "quality-gate:running",
+    ts: new Date().toISOString(),
+    runId: params.state.runId,
+  });
+
+  const gateResult = await deps.runQualityGates({
+    rootDir: params.rootDir,
+    logPath: artifacts.logPath,
+    streamOutput: params.streamOutput,
+  });
+
+  if (!gateResult.passed) {
+    const category = categorizeQualityGateFailure(
+      gateResult.failedStep ?? "unknown",
+    );
+    const strategy = getRecoveryStrategy(category, params.attempt);
+
+    await params.eventBus.emit({
+      type: "quality-gate:failed",
+      ts: new Date().toISOString(),
+      runId: params.state.runId,
+      gate: gateResult.failedStep,
+      details: gateResult.details,
+    });
+
+    return {
+      passed: false,
+      failureDetails: gateResult.details,
+      failedStep: gateResult.failedStep,
+      category,
+      strategy,
+    };
+  }
+
+  await params.eventBus.emit({
+    type: "quality-gate:passed",
+    ts: new Date().toISOString(),
+    runId: params.state.runId,
+  });
+
+  return { passed: true };
+}
+
+export async function commitChanges(
+  params: {
+    rootDir: string;
+    state: RunState;
+    statePath: string;
+    phase: PlanPhase;
+    planTask: PlanTask;
+    runtime: RuntimeProvider;
+    eventBus: EventBus;
+    previousOutputs: AgentOutput[];
+    stepSequence: number;
+    attempt: number;
+    maxAttempts: number;
+    qaCycles: number;
+    implementer: string;
+    model?: string;
+    streamOutput: boolean;
+    timeout?: number;
+  },
+  deps: OrchestratorDependencies,
+): Promise<CommitResult> {
+  try {
+    const allChanged = await deps.listChangedFiles(params.rootDir);
+    await deps.stageAll(params.rootDir);
+    const diffStat = await deps.stagedDiffStat(params.rootDir);
+    const diffPatch = truncateText(
+      await deps.stagedDiff(params.rootDir),
+      12000,
+    );
+
+    const commitAgent = getAgent("commit-generator");
+    const commitInput: AgentInput = {
+      task: params.planTask,
+      phase: params.phase,
+      planPath: getSourcesPlanPath(params.state.sourcesDir),
+      tasksPath: getSourcesTasksPath(params.state.sourcesDir),
+      previousOutputs: params.previousOutputs,
+      peerProgress: new Map([
+        ["diffStat", diffStat],
+        ["diffPatch", diffPatch],
+        ["changedFiles", allChanged.join("\n")],
+      ]),
+      previousFailedAttempts: [],
+      attempt: params.attempt,
+      maxAttempts: params.maxAttempts,
+    };
+
+    const commitOutput = await deps.runAgent({
+      agent: commitAgent,
+      input: commitInput,
+      runtime: params.runtime,
+      state: params.state,
+      stepSequence: params.stepSequence + 1,
+      eventBus: params.eventBus,
+      model: params.model,
+      streamOutput: params.streamOutput,
+      timeout: params.timeout,
+    });
+
+    let commitMessage: { subject: string; body: string };
+    try {
+      commitMessage = parseConventionalCommit(commitOutput.raw);
+    } catch {
+      commitMessage = {
+        subject: `feat(task): ${params.planTask.title}`,
+        body: "",
+      };
+    }
+
+    await deps.commitStaged(
+      commitMessage.subject,
+      commitMessage.body,
+      params.rootDir,
+    );
+    const hash = await deps.headCommit(params.rootDir);
+
+    const taskState = getTaskState(
+      params.state,
+      params.phase.id,
+      params.planTask.id,
+    );
+    taskState.status = "passed";
+    taskState.lastCommit = hash;
+    taskState.changedFiles = allChanged;
+    await deps.saveRunState(params.statePath, params.state);
+
+    // Best-effort: update sources file (non-critical, commit is done)
+    try {
+      await markTaskDoneInSources(params.state.sourcesDir, params.planTask.id);
+    } catch {
+      // Sources file update failure should not break the commit flow
+    }
+
+    await deps.appendDecision(params.state.decisionsDir, {
+      ts: new Date().toISOString(),
+      action: "task_complete",
+      taskId: params.planTask.id,
+      commit: hash,
+    });
+
+    await params.eventBus.emit({
+      type: "task:completed",
+      ts: new Date().toISOString(),
+      runId: params.state.runId,
+      taskId: params.planTask.id,
+      phaseId: params.phase.id,
+      commitHash: hash,
+    });
+
+    await deps.writeProgressFile({
+      progressDir: params.state.progressDir,
+      taskId: params.planTask.id,
+      agentId: params.implementer,
+      content: [
+        `# Agent Progress: ${params.implementer}`,
+        `## Task: ${params.planTask.id} (${params.planTask.title})`,
+        "",
+        `### What Was Done`,
+        `- Implemented task per requirements`,
+        "",
+        `### Files Changed`,
+        allChanged.map((f) => `- ${f}`).join("\n"),
+        "",
+        `### QA Cycles: ${params.qaCycles}`,
+        `### Commit: ${hash}`,
+      ].join("\n"),
+    });
+
+    return { success: true, commitHash: hash };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+// ── Cycle detection ──
+
+export function detectAgentCycle(agentHistory: string[]): boolean {
+  // Same agent dispatched 4+ times consecutively
+  if (agentHistory.length >= 4) {
+    const last4 = agentHistory.slice(-4);
+    if (last4.every((a) => a === last4[0])) return true;
+  }
+
+  // 2-agent cycle repeated 3 times (A→B→A→B→A→B = 6 entries)
+  if (agentHistory.length >= 6) {
+    const last6 = agentHistory.slice(-6);
+    const a = last6[0]!;
+    const b = last6[1]!;
+    if (
+      a !== b &&
+      last6[2] === a &&
+      last6[3] === b &&
+      last6[4] === a &&
+      last6[5] === b
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// ── Fallback recommendation ──
+
+export function buildFallbackRecommendation(
+  agentHistory: string[],
+  implementer: string,
+  reviewer: string,
+  lastQaVerdict?: VerifierStatus,
+): PlannerRecommendation {
+  const lastAgent = agentHistory.length > 0 ? agentHistory.at(-1) : undefined;
+
+  // No DEV yet → dispatch DEV
+  if (!agentHistory.some((a) => WRITE_AGENT_IDS.has(a))) {
+    return {
+      contextBriefing: "Fallback: no write agent has run yet",
+      recommendation: {
+        action: "dispatch_agent",
+        agentId: implementer,
+        rationale: "No implementation agent has run; dispatching implementer",
+      },
+      warnings: ["Using fallback logic — planner agent was unavailable"],
+    };
+  }
+
+  // Last was DEV/fix agent → dispatch QA
+  if (lastAgent && WRITE_AGENT_IDS.has(lastAgent)) {
+    return {
+      contextBriefing: "Fallback: write agent completed, need QA review",
+      recommendation: {
+        action: "dispatch_agent",
+        agentId: reviewer,
+        rationale: "Write agent completed; dispatching reviewer for QA",
+      },
+      warnings: ["Using fallback logic — planner agent was unavailable"],
+    };
+  }
+
+  // Last was QA → parse verdict
+  if (lastAgent === reviewer || lastAgent === "qa-engineer") {
+    if (lastQaVerdict === "DONE") {
+      return {
+        contextBriefing: "Fallback: QA approved",
+        recommendation: {
+          action: "task_complete",
+          rationale: "QA returned DONE; task is ready to commit",
+        },
+        warnings: ["Using fallback logic — planner agent was unavailable"],
+      };
+    }
+    // QA found issues → dispatch fix agent
+    const fixAgent = lastQaVerdict === "REFACTOR" ? "refactorer" : "bug-fixer";
+    return {
+      contextBriefing: "Fallback: QA found issues, dispatching fix agent",
+      recommendation: {
+        action: "dispatch_agent",
+        agentId: fixAgent,
+        rationale: `QA returned ${lastQaVerdict ?? "ISSUES"}; dispatching ${fixAgent}`,
+      },
+      warnings: ["Using fallback logic — planner agent was unavailable"],
+    };
+  }
+
+  // Can't determine → block
+  return {
+    contextBriefing: "Fallback: unable to determine next step",
+    recommendation: {
+      action: "block_task",
+      rationale:
+        "Planner unavailable and fallback logic cannot determine next step",
+    },
+    warnings: ["Using fallback logic — planner agent was unavailable"],
+  };
+}
+
+// ── Main task flow (planner-driven) ──
+
 async function executeTaskFlow(
   params: {
     rootDir: string;
@@ -322,544 +652,418 @@ async function executeTaskFlow(
     let stepSequence = 0;
     const previousOutputs: AgentOutput[] = [];
     const failedAttempts: FailedAttempt[] = [];
+    const agentHistory: string[] = [];
+    let plannerSteps = 0;
+    let qaCycles = 0;
+    let lastQaVerdict: VerifierStatus | undefined;
+    let shouldRetry = false;
 
-    // Step 1: Implementer agent
-    stepSequence += 1;
-    const devInput: AgentInput = {
-      task: planTask,
-      phase,
-      planPath: getSourcesPlanPath(state.sourcesDir),
-      tasksPath: getSourcesTasksPath(state.sourcesDir),
-      previousOutputs,
-      peerProgress: new Map(),
-      previousFailedAttempts: failedAttempts,
-      failureContext: lastFailure || undefined,
-      attempt,
-      maxAttempts,
-    };
+    while (plannerSteps < MAX_PLANNER_STEPS) {
+      plannerSteps++;
+      stepSequence++;
 
-    const devAgent = getAgent(implementer);
-    const devOutput = await deps.runAgent({
-      agent: devAgent,
-      input: devInput,
-      runtime,
-      state,
-      stepSequence,
-      eventBus,
-      model: params.model,
-      streamOutput: params.streamOutput,
-      timeout: params.timeout,
-    });
-
-    if (devOutput.exitCode !== 0) {
-      const category: FailureCategory = "runtime_crash";
-      const strategy = getRecoveryStrategy(category, attempt);
-      lastFailure = `${implementer} failed with code ${devOutput.exitCode}`;
-      taskState.lastError = lastFailure;
-      taskState.lastExitCode = devOutput.exitCode;
-      await deps.saveRunState(statePath, state);
-
-      await deps.appendDecision(state.decisionsDir, {
-        ts: new Date().toISOString(),
-        action: "dispatch_agent",
-        agentId: implementer,
-        taskId: planTask.id,
-        outcome: `failed (exit ${devOutput.exitCode}), strategy: ${strategy}`,
-      });
-
-      if (strategy === "block_and_handoff") {
-        return {
-          success: false,
-          failureCategory: category,
-          failureDetails: lastFailure,
-        };
+      // Build peer progress context for planner
+      const changedFiles = await deps
+        .listChangedFiles(rootDir)
+        .catch(() => [] as string[]);
+      const peerProgress = new Map<string, string>();
+      peerProgress.set("implementer", implementer);
+      peerProgress.set("reviewer", reviewer);
+      if (changedFiles.length > 0) {
+        peerProgress.set("changedFiles", changedFiles.join("\n"));
       }
-      if (strategy === "escalate_to_em") {
-        await escalateToEM(
-          {
+      peerProgress.set("qaCycles", String(qaCycles));
+      if (lastFailure) {
+        peerProgress.set("lastFailure", lastFailure);
+      }
+
+      // Consult planner (with fallback)
+      let recommendation: PlannerRecommendation;
+      let usedFallback = false;
+
+      if (hasAgent("orchestrator-planner")) {
+        try {
+          const result = await deps.consultPlanner({
             state,
             phase,
-            planTask,
-            runtime,
-            eventBus,
-            failureContext: lastFailure,
-            stepSequence,
-            model: params.model,
-            streamOutput: params.streamOutput,
-            timeout: params.timeout,
-          },
-          deps,
-        );
-      }
-      continue;
-    }
-
-    previousOutputs.push(devOutput);
-
-    // Check for changed files
-    const changedFiles = await deps.listChangedFiles(rootDir);
-    if (changedFiles.length === 0) {
-      const category: FailureCategory = "agent_no_changes";
-      const strategy = getRecoveryStrategy(category, attempt);
-      lastFailure = `No repository changes detected after ${implementer}`;
-      taskState.lastError = lastFailure;
-      await deps.saveRunState(statePath, state);
-
-      await deps.appendDecision(state.decisionsDir, {
-        ts: new Date().toISOString(),
-        action: "dispatch_agent",
-        agentId: implementer,
-        taskId: planTask.id,
-        outcome: `no_changes, strategy: ${strategy}`,
-      });
-
-      if (strategy === "block_and_handoff") {
-        return {
-          success: false,
-          failureCategory: category,
-          failureDetails: lastFailure,
-        };
-      }
-      if (strategy === "escalate_to_em") {
-        await escalateToEM(
-          {
-            state,
-            phase,
-            planTask,
-            runtime,
-            eventBus,
-            failureContext: lastFailure,
-            stepSequence,
-            model: params.model,
-            streamOutput: params.streamOutput,
-            timeout: params.timeout,
-          },
-          deps,
-        );
-      }
-      continue;
-    }
-
-    // Step 2: Quality gates
-    if (!params.skipQualityGates) {
-      const artifacts = buildStepArtifacts({
-        state,
-        phaseId: phase.id,
-        taskId: planTask.id,
-        attempt,
-        stepSequence,
-        agent: "quality-gates",
-      });
-
-      await eventBus.emit({
-        type: "quality-gate:running",
-        ts: new Date().toISOString(),
-        runId: state.runId,
-      });
-
-      const gateResult = await deps.runQualityGates({
-        rootDir,
-        logPath: artifacts.logPath,
-        streamOutput: params.streamOutput,
-      });
-
-      if (!gateResult.passed) {
-        const gateCategory = categorizeQualityGateFailure(
-          gateResult.failedStep ?? "unknown",
-        );
-        const gateStrategy = getRecoveryStrategy(gateCategory, attempt);
-        lastFailure = gateResult.details;
-        taskState.lastError = lastFailure;
-        taskState.lastQualityGate = gateResult.failedStep;
-        await deps.saveRunState(statePath, state);
-
-        await eventBus.emit({
-          type: "quality-gate:failed",
-          ts: new Date().toISOString(),
-          runId: state.runId,
-          gate: gateResult.failedStep,
-          details: gateResult.details,
-        });
-
-        await deps.appendDecision(state.decisionsDir, {
-          ts: new Date().toISOString(),
-          action: "retry",
-          taskId: planTask.id,
-          outcome: `gate ${gateResult.failedStep} failed, strategy: ${gateStrategy}`,
-        });
-
-        if (gateStrategy === "block_and_handoff") {
-          return {
-            success: false,
-            failureCategory: gateCategory,
-            failureDetails: lastFailure,
-          };
-        }
-        if (gateStrategy === "auto_fix_retry") {
-          // Dispatch refactorer with gate failure context
-          stepSequence += 1;
-          const autoFixAgent = getAgent("refactorer");
-          const autoFixInput: AgentInput = {
             task: planTask,
-            phase,
-            planPath: getSourcesPlanPath(state.sourcesDir),
-            tasksPath: getSourcesTasksPath(state.sourcesDir),
+            runtime,
+            eventBus,
             previousOutputs,
-            peerProgress: new Map([
-              ["gateFailure", gateResult.details],
-              ["failedStep", gateResult.failedStep ?? "unknown"],
-            ]),
-            previousFailedAttempts: [],
-            failureContext: `Quality gate "${gateResult.failedStep}" failed: ${gateResult.details}`,
+            peerProgress,
+            failedAttempts,
+            failureContext: lastFailure || undefined,
             attempt,
             maxAttempts,
-          };
-          await deps.runAgent({
-            agent: autoFixAgent,
-            input: autoFixInput,
-            runtime,
-            state,
             stepSequence,
-            eventBus,
             model: params.model,
             streamOutput: params.streamOutput,
             timeout: params.timeout,
           });
-        }
-        if (gateStrategy === "escalate_to_em") {
-          await escalateToEM(
-            {
-              state,
-              phase,
-              planTask,
-              runtime,
-              eventBus,
-              failureContext: `Quality gate "${gateResult.failedStep}" failed: ${gateResult.details}`,
-              stepSequence,
-              model: params.model,
-              streamOutput: params.streamOutput,
-              timeout: params.timeout,
-            },
-            deps,
+          recommendation = result.recommendation;
+          previousOutputs.push(result.output);
+        } catch {
+          recommendation = buildFallbackRecommendation(
+            agentHistory,
+            implementer,
+            reviewer,
+            lastQaVerdict,
           );
+          usedFallback = true;
         }
-        continue;
+      } else {
+        recommendation = buildFallbackRecommendation(
+          agentHistory,
+          implementer,
+          reviewer,
+          lastQaVerdict,
+        );
+        usedFallback = true;
       }
 
-      await eventBus.emit({
-        type: "quality-gate:passed",
-        ts: new Date().toISOString(),
-        runId: state.runId,
-      });
-    }
-
-    // Step 3: QA verification loop
-    let qaCycle = 0;
-    let qaVerdict: "DONE" | "REFACTOR" | "ISSUES" = "ISSUES";
-
-    while (qaCycle < MAX_QA_CYCLES) {
-      qaCycle += 1;
-      taskState.qaCycles = qaCycle;
-      stepSequence += 1;
-
-      const qaAgent = getAgent(reviewer);
-      const qaInput: AgentInput = {
-        task: planTask,
-        phase,
-        planPath: getSourcesPlanPath(state.sourcesDir),
-        tasksPath: getSourcesTasksPath(state.sourcesDir),
-        previousOutputs,
-        peerProgress: new Map(),
-        previousFailedAttempts: failedAttempts,
-        attempt: qaCycle,
-        maxAttempts: MAX_QA_CYCLES,
-      };
-
-      const qaOutput = await deps.runAgent({
-        agent: qaAgent,
-        input: qaInput,
-        runtime,
-        state,
-        stepSequence,
-        eventBus,
-        model: params.model,
-        streamOutput: params.streamOutput,
-        timeout: params.timeout,
-      });
-
-      if (qaOutput.exitCode !== 0) {
-        const qaCategory: FailureCategory = "runtime_crash";
-        const qaStrategy = getRecoveryStrategy(qaCategory, attempt);
-        lastFailure = `${reviewer} failed with code ${qaOutput.exitCode}`;
-
-        await deps.appendDecision(state.decisionsDir, {
-          ts: new Date().toISOString(),
-          action: "dispatch_agent",
-          agentId: reviewer,
-          taskId: planTask.id,
-          outcome: `failed (exit ${qaOutput.exitCode}), strategy: ${qaStrategy}`,
-        });
-
-        if (qaStrategy === "escalate_to_em") {
-          await escalateToEM(
-            {
-              state,
-              phase,
-              planTask,
-              runtime,
-              eventBus,
-              failureContext: lastFailure,
-              stepSequence,
-              model: params.model,
-              streamOutput: params.streamOutput,
-              timeout: params.timeout,
-            },
-            deps,
-          );
-        }
-        break;
-      }
-
-      let decision: { status: "DONE" | "REFACTOR" | "ISSUES"; notes: string[] };
-      try {
-        decision = parseVerifierDecision(qaOutput.raw);
-      } catch {
-        lastFailure = `Invalid QA output: ${qaOutput.raw.slice(0, 200)}`;
-        break;
-      }
-
+      // Log planner decision
       await deps.appendDecision(state.decisionsDir, {
         ts: new Date().toISOString(),
-        action: "qa_verdict",
+        action: usedFallback ? "planner_fallback" : "planner_consulted",
         taskId: planTask.id,
-        verdict: decision.status,
-        notes: decision.notes,
+        rationale: recommendation.recommendation.rationale,
+        agentId: recommendation.recommendation.agentId,
+        outcome: `action=${recommendation.recommendation.action}`,
       });
 
-      await eventBus.emit({
-        type: "decision:made",
-        ts: new Date().toISOString(),
-        runId: state.runId,
-        action: "qa_verdict",
-        taskId: planTask.id,
-        verdict: decision.status,
-      });
+      // Route by action
+      const action = recommendation.recommendation.action;
 
-      qaVerdict = decision.status;
-      previousOutputs.push(qaOutput);
+      if (action === "skip_task") {
+        taskState.status = "passed";
+        await deps.saveRunState(statePath, state);
+        return { success: true };
+      }
 
-      if (decision.status === "DONE") break;
+      if (action === "block_task") {
+        return {
+          success: false,
+          failureCategory: "task_blocked",
+          failureDetails:
+            recommendation.recommendation.rationale || "Blocked by planner",
+        };
+      }
 
-      // Get the diff before fix agent for failed attempts tracking
-      const currentDiff = await deps.stagedDiff(rootDir).catch(() => "");
-
-      // Dispatch refactorer or bug-fixer
-      const fixAgentId =
-        decision.status === "REFACTOR" ? "refactorer" : "bug-fixer";
-      stepSequence += 1;
-
-      const fixAgent = getAgent(fixAgentId);
-      const fixInput: AgentInput = {
-        task: planTask,
-        phase,
-        planPath: getSourcesPlanPath(state.sourcesDir),
-        tasksPath: getSourcesTasksPath(state.sourcesDir),
-        previousOutputs,
-        peerProgress: new Map(),
-        previousFailedAttempts: failedAttempts,
-        attempt: qaCycle,
-        maxAttempts: MAX_QA_CYCLES,
-      };
-
-      const fixOutput = await deps.runAgent({
-        agent: fixAgent,
-        input: fixInput,
-        runtime,
-        state,
-        stepSequence,
-        eventBus,
-        model: params.model,
-        streamOutput: params.streamOutput,
-        timeout: params.timeout,
-      });
-
-      if (fixOutput.exitCode !== 0) {
-        const fixCategory: FailureCategory = "runtime_crash";
-        const fixStrategy = getRecoveryStrategy(fixCategory, attempt);
-        lastFailure = `${fixAgentId} failed with code ${fixOutput.exitCode}`;
-
-        await deps.appendDecision(state.decisionsDir, {
-          ts: new Date().toISOString(),
-          action: "dispatch_agent",
-          agentId: fixAgentId,
-          taskId: planTask.id,
-          outcome: `failed (exit ${fixOutput.exitCode}), strategy: ${fixStrategy}`,
-        });
-
-        if (fixStrategy === "escalate_to_em") {
-          await escalateToEM(
-            {
-              state,
-              phase,
-              planTask,
-              runtime,
-              eventBus,
-              failureContext: lastFailure,
-              stepSequence,
-              model: params.model,
-              streamOutput: params.streamOutput,
-              timeout: params.timeout,
-            },
-            deps,
-          );
-        }
+      if (action === "retry_task") {
+        shouldRetry = true;
+        lastFailure =
+          recommendation.recommendation.rationale || "Planner requested retry";
         break;
       }
 
-      failedAttempts.push({
-        agentId: fixAgentId,
-        diff: truncateText(currentDiff, 3000),
-        qaNotes: decision.notes,
-        cycle: qaCycle,
-      });
-
-      previousOutputs.push(fixOutput);
-
-      // Run quality gates again after fix
-      if (!params.skipQualityGates) {
-        const fixArtifacts = buildStepArtifacts({
-          state,
-          phaseId: phase.id,
-          taskId: planTask.id,
-          attempt,
-          stepSequence,
-          agent: "quality-gates",
-        });
-
-        const fixGateResult = await deps.runQualityGates({
-          rootDir,
-          logPath: fixArtifacts.logPath,
-          streamOutput: params.streamOutput,
-        });
-
-        if (!fixGateResult.passed) {
-          lastFailure = fixGateResult.details;
-          break;
-        }
-      }
-    }
-
-    if (qaVerdict === "DONE") {
-      // Commit the changes
-      try {
-        const allChanged = await deps.listChangedFiles(rootDir);
-        await deps.stageAll(rootDir);
-        const diffStat = await deps.stagedDiffStat(rootDir);
-        const diffPatch = truncateText(await deps.stagedDiff(rootDir), 12000);
-
-        // Use commit-generator mini agent
-        const commitAgent = getAgent("commit-generator");
-        stepSequence += 1;
-        const commitInput: AgentInput = {
-          task: planTask,
-          phase,
-          planPath: getSourcesPlanPath(state.sourcesDir),
-          tasksPath: getSourcesTasksPath(state.sourcesDir),
-          previousOutputs,
-          peerProgress: new Map([
-            ["diffStat", diffStat],
-            ["diffPatch", diffPatch],
-            ["changedFiles", allChanged.join("\n")],
-          ]),
-          previousFailedAttempts: [],
-          attempt,
-          maxAttempts,
-        };
-
-        const commitOutput = await deps.runAgent({
-          agent: commitAgent,
-          input: commitInput,
-          runtime,
-          state,
-          stepSequence,
-          eventBus,
-          model: params.model,
-          streamOutput: params.streamOutput,
-          timeout: params.timeout,
-        });
-
-        let commitMessage: { subject: string; body: string };
-        try {
-          commitMessage = parseConventionalCommit(commitOutput.raw);
-        } catch {
-          commitMessage = {
-            subject: `feat(task): ${planTask.title}`,
-            body: "",
-          };
-        }
-
-        await deps.commitStaged(
-          commitMessage.subject,
-          commitMessage.body,
-          rootDir,
+      if (action === "task_complete") {
+        const commitResult = await commitChanges(
+          {
+            rootDir,
+            state,
+            statePath,
+            phase,
+            planTask,
+            runtime,
+            eventBus,
+            previousOutputs,
+            stepSequence,
+            attempt,
+            maxAttempts,
+            qaCycles,
+            implementer,
+            model: params.model,
+            streamOutput: params.streamOutput,
+            timeout: params.timeout,
+          },
+          deps,
         );
-        const hash = await deps.headCommit(rootDir);
-
-        taskState.status = "passed";
-        taskState.lastCommit = hash;
-        taskState.changedFiles = allChanged;
-        await deps.saveRunState(statePath, state);
-        await markTaskDoneInSources(state.sourcesDir, planTask.id);
-
-        await deps.appendDecision(state.decisionsDir, {
-          ts: new Date().toISOString(),
-          action: "task_complete",
-          taskId: planTask.id,
-          commit: hash,
-        });
-
-        await eventBus.emit({
-          type: "task:completed",
-          ts: new Date().toISOString(),
-          runId: state.runId,
-          taskId: planTask.id,
-          phaseId: phase.id,
-          commitHash: hash,
-        });
-
-        // Write progress file
-        await deps.writeProgressFile({
-          progressDir: state.progressDir,
-          taskId: planTask.id,
-          agentId: implementer,
-          content: [
-            `# Agent Progress: ${implementer}`,
-            `## Task: ${planTask.id} (${planTask.title})`,
-            "",
-            `### What Was Done`,
-            `- Implemented task per requirements`,
-            "",
-            `### Files Changed`,
-            allChanged.map((f) => `- ${f}`).join("\n"),
-            "",
-            `### QA Cycles: ${qaCycle}`,
-            `### Commit: ${hash}`,
-          ].join("\n"),
-        });
-
-        return { success: true, commitHash: hash };
-      } catch (error) {
-        lastFailure = error instanceof Error ? error.message : String(error);
+        if (commitResult.success) {
+          return { success: true, commitHash: commitResult.commitHash };
+        }
+        lastFailure = commitResult.error ?? "Commit failed";
         taskState.lastError = lastFailure;
         await deps.saveRunState(statePath, state);
         continue;
       }
+
+      // action === "dispatch_agent"
+      const agentId = recommendation.recommendation.agentId;
+      if (!agentId) {
+        lastFailure = "Planner recommended dispatch_agent but no agentId";
+        continue;
+      }
+
+      // Cycle detection
+      agentHistory.push(agentId);
+      if (detectAgentCycle(agentHistory)) {
+        lastFailure = `Agent cycle detected: ${agentHistory.slice(-6).join(" → ")}`;
+        await deps.appendDecision(state.decisionsDir, {
+          ts: new Date().toISOString(),
+          action: "task_blocked",
+          taskId: planTask.id,
+          rationale: lastFailure,
+        });
+        break;
+      }
+
+      // Inject planner context into agent peer progress
+      const agentPeerProgress = new Map<string, string>();
+      if (recommendation.recommendation.agentContext) {
+        agentPeerProgress.set(
+          "plannerContext",
+          recommendation.recommendation.agentContext,
+        );
+      }
+      if (recommendation.recommendation.scope?.length) {
+        agentPeerProgress.set(
+          "plannerScope",
+          recommendation.recommendation.scope.join("\n"),
+        );
+      }
+
+      // Run the agent
+      const agent = getAgent(agentId);
+      const agentInput: AgentInput = {
+        task: planTask,
+        phase,
+        planPath: getSourcesPlanPath(state.sourcesDir),
+        tasksPath: getSourcesTasksPath(state.sourcesDir),
+        previousOutputs,
+        peerProgress: agentPeerProgress,
+        previousFailedAttempts: failedAttempts,
+        failureContext: lastFailure || undefined,
+        attempt,
+        maxAttempts,
+      };
+
+      const output = await deps.runAgent({
+        agent,
+        input: agentInput,
+        runtime,
+        state,
+        stepSequence,
+        eventBus,
+        model: params.model,
+        streamOutput: params.streamOutput,
+        timeout: params.timeout,
+      });
+
+      // Handle agent failure
+      if (output.exitCode !== 0) {
+        const category: FailureCategory = "runtime_crash";
+        const strategy = getRecoveryStrategy(category, attempt);
+        lastFailure = `${agentId} failed with code ${output.exitCode}`;
+        taskState.lastError = lastFailure;
+        taskState.lastExitCode = output.exitCode;
+        await deps.saveRunState(statePath, state);
+
+        await deps.appendDecision(state.decisionsDir, {
+          ts: new Date().toISOString(),
+          action: "dispatch_agent",
+          agentId,
+          taskId: planTask.id,
+          outcome: `failed (exit ${output.exitCode}), strategy: ${strategy}`,
+        });
+
+        if (strategy === "block_and_handoff") {
+          return {
+            success: false,
+            failureCategory: category,
+            failureDetails: lastFailure,
+          };
+        }
+        if (strategy === "escalate_to_em") {
+          await escalateToEM(
+            {
+              state,
+              phase,
+              planTask,
+              runtime,
+              eventBus,
+              failureContext: lastFailure,
+              stepSequence,
+              model: params.model,
+              streamOutput: params.streamOutput,
+              timeout: params.timeout,
+            },
+            deps,
+          );
+        }
+        // Let planner re-evaluate
+        continue;
+      }
+
+      previousOutputs.push(output);
+
+      // POST-AGENT INVARIANTS
+
+      // After write agents: check changed files + quality gates
+      if (WRITE_AGENT_IDS.has(agentId) && !params.skipQualityGates) {
+        const writeChangedFiles = await deps.listChangedFiles(rootDir);
+
+        if (writeChangedFiles.length === 0) {
+          const category: FailureCategory = "agent_no_changes";
+          lastFailure = `No repository changes detected after ${agentId}`;
+          taskState.lastError = lastFailure;
+          await deps.saveRunState(statePath, state);
+
+          await deps.appendDecision(state.decisionsDir, {
+            ts: new Date().toISOString(),
+            action: "dispatch_agent",
+            agentId,
+            taskId: planTask.id,
+            outcome: `no_changes`,
+          });
+          // Let planner re-evaluate
+          continue;
+        }
+
+        taskState.changedFiles = writeChangedFiles;
+
+        const gateCheck = await runQualityGateCheck(
+          {
+            rootDir,
+            state,
+            phase,
+            planTask,
+            attempt,
+            stepSequence,
+            streamOutput: params.streamOutput,
+            eventBus,
+          },
+          deps,
+        );
+
+        if (!gateCheck.passed) {
+          lastFailure = gateCheck.failureDetails ?? "Quality gate failed";
+          taskState.lastError = lastFailure;
+          taskState.lastQualityGate = gateCheck.failedStep;
+          await deps.saveRunState(statePath, state);
+
+          await deps.appendDecision(state.decisionsDir, {
+            ts: new Date().toISOString(),
+            action: "retry",
+            taskId: planTask.id,
+            outcome: `gate ${gateCheck.failedStep} failed, strategy: ${gateCheck.strategy}`,
+          });
+
+          if (gateCheck.strategy === "block_and_handoff") {
+            return {
+              success: false,
+              failureCategory: gateCheck.category,
+              failureDetails: lastFailure,
+            };
+          }
+          // Let planner decide how to fix
+          continue;
+        }
+      }
+
+      // After QA agent: parse verdict and handle
+      if (agentId === reviewer || agentId === "qa-engineer") {
+        qaCycles++;
+        taskState.qaCycles = qaCycles;
+
+        let decision: { status: VerifierStatus; notes: string[] };
+        try {
+          decision = parseVerifierDecision(output.raw);
+        } catch {
+          lastFailure = `Invalid QA output: ${output.raw.slice(0, 200)}`;
+          continue;
+        }
+
+        await deps.appendDecision(state.decisionsDir, {
+          ts: new Date().toISOString(),
+          action: "qa_verdict",
+          taskId: planTask.id,
+          verdict: decision.status,
+          notes: decision.notes,
+        });
+
+        await eventBus.emit({
+          type: "decision:made",
+          ts: new Date().toISOString(),
+          runId: state.runId,
+          action: "qa_verdict",
+          taskId: planTask.id,
+          verdict: decision.status,
+        });
+
+        lastQaVerdict = decision.status;
+
+        if (decision.status === "DONE") {
+          const commitResult = await commitChanges(
+            {
+              rootDir,
+              state,
+              statePath,
+              phase,
+              planTask,
+              runtime,
+              eventBus,
+              previousOutputs,
+              stepSequence,
+              attempt,
+              maxAttempts,
+              qaCycles,
+              implementer,
+              model: params.model,
+              streamOutput: params.streamOutput,
+              timeout: params.timeout,
+            },
+            deps,
+          );
+          if (commitResult.success) {
+            return { success: true, commitHash: commitResult.commitHash };
+          }
+          lastFailure = commitResult.error ?? "Commit failed";
+          taskState.lastError = lastFailure;
+          await deps.saveRunState(statePath, state);
+          continue;
+        }
+
+        if (qaCycles >= MAX_QA_CYCLES) {
+          lastFailure = `QA cycles exhausted (${MAX_QA_CYCLES}) without approval`;
+          taskState.status = "failed";
+          taskState.lastError = lastFailure;
+          await deps.saveRunState(statePath, state);
+
+          await eventBus.emit({
+            type: "task:failed",
+            ts: new Date().toISOString(),
+            runId: state.runId,
+            taskId: planTask.id,
+            phaseId: phase.id,
+            failureDetails: lastFailure,
+          });
+          break;
+        }
+
+        // Track failed attempt for context
+        const currentDiff = await deps.stagedDiff(rootDir).catch(() => "");
+        failedAttempts.push({
+          agentId: reviewer,
+          diff: truncateText(currentDiff, 3000),
+          qaNotes: decision.notes,
+          cycle: qaCycles,
+        });
+
+        // Let planner decide next fix agent
+        continue;
+      }
     }
 
-    // QA loop exhausted without DONE
-    lastFailure = `QA cycles exhausted (${MAX_QA_CYCLES}) without approval`;
-    taskState.status = "failed";
+    if (shouldRetry) {
+      continue;
+    }
+
+    // If we broke out of the planner loop without returning, the task failed this attempt
+    if (plannerSteps >= MAX_PLANNER_STEPS) {
+      lastFailure = `Planner step limit reached (${MAX_PLANNER_STEPS})`;
+    }
     taskState.lastError = lastFailure;
+    taskState.status = "failed";
     await deps.saveRunState(statePath, state);
 
     await eventBus.emit({
