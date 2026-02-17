@@ -56,7 +56,7 @@ describe("TUI store", () => {
     const tui = createInitialTuiState(state);
     expect(tui.runId).toBe("test-run");
     expect(tui.totalTasks).toBe(2);
-    expect(tui.agents).toHaveLength(8);
+    expect(tui.agents).toHaveLength(9);
     expect(tui.tasks).toHaveLength(2);
     expect(tui.logs).toHaveLength(0);
   });

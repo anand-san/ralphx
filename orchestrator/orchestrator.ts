@@ -123,16 +123,19 @@ async function discoverAndCacheQualityGateSteps(
 
   const agent = getAgent("quality-gate-discoverer");
 
-  await eventBus.emit({
-    type: "log:info",
-    ts: new Date().toISOString(),
-    runId: state.runId,
-    source: "orchestrator",
-    message: "Discovering quality gate steps via agent...",
-  });
-
   const logPath = `${state.logDir}/quality-gate-discovery.log`;
   const outputPath = `${state.messageDir}/quality-gate-discovery.md`;
+
+  // Show agent as running in TUI
+  await eventBus.emit({
+    type: "agent:dispatched",
+    ts: new Date().toISOString(),
+    runId: state.runId,
+    agentId: "quality-gate-discoverer",
+    taskId: "_discovery",
+    phaseId: "_discovery",
+    message: "Scanning repo for quality gate commands...",
+  });
 
   // Build a minimal AgentInput for the discoverer (it ignores task-specific fields)
   const dummyInput: AgentInput = {
@@ -160,6 +163,7 @@ async function discoverAndCacheQualityGateSteps(
   };
 
   const prompt = agent.buildPrompt(dummyInput);
+  const startTime = Date.now();
 
   try {
     const result = await runtime.execute({
@@ -172,6 +176,8 @@ async function discoverAndCacheQualityGateSteps(
       timeout: 60_000,
       streamOutput: false,
     });
+
+    const durationMs = Date.now() - startTime;
 
     let steps: DiscoveredSteps["steps"] = [];
     if (agent.parseOutput && result.output) {
@@ -186,6 +192,18 @@ async function discoverAndCacheQualityGateSteps(
     state.qualityGateSteps = steps.map((s) => ({ name: s.name, cmd: s.cmd }));
     await deps.saveRunState(statePath, state);
 
+    // Mark agent completed in TUI
+    await eventBus.emit({
+      type: "agent:completed",
+      ts: new Date().toISOString(),
+      runId: state.runId,
+      agentId: "quality-gate-discoverer",
+      taskId: "_discovery",
+      phaseId: "_discovery",
+      exitCode: result.exitCode,
+      durationMs,
+    });
+
     await eventBus.emit({
       type: "log:info",
       ts: new Date().toISOString(),
@@ -197,9 +215,23 @@ async function discoverAndCacheQualityGateSteps(
           : "No quality gates discovered for this repo.",
     });
   } catch (err) {
+    const durationMs = Date.now() - startTime;
+
     // Discovery failure is non-fatal — gates will be empty
     state.qualityGateSteps = [];
     await deps.saveRunState(statePath, state);
+
+    // Mark agent failed in TUI
+    await eventBus.emit({
+      type: "agent:completed",
+      ts: new Date().toISOString(),
+      runId: state.runId,
+      agentId: "quality-gate-discoverer",
+      taskId: "_discovery",
+      phaseId: "_discovery",
+      exitCode: 1,
+      durationMs,
+    });
 
     await eventBus.emit({
       type: "log:warn",

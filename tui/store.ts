@@ -1,5 +1,5 @@
 import type { RalphxEvent } from "../monitor/types";
-import type { RunState, TaskRuntimeState } from "../state/types";
+import type { RunState } from "../state/types";
 
 export interface TuiState {
   runId: string;
@@ -93,6 +93,11 @@ export function createInitialTuiState(state: RunState): TuiState {
       { id: "bug-fixer", name: "Bug Fixer", status: "idle" },
       { id: "refactorer", name: "Refactorer", status: "idle" },
       { id: "commit-generator", name: "Commit Generator", status: "idle" },
+      {
+        id: "quality-gate-discoverer",
+        name: "Repo Discovery Agent",
+        status: "idle",
+      },
     ],
     tasks: state.tasks.map((t) => ({
       id: t.id,
