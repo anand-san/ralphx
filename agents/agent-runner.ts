@@ -131,6 +131,25 @@ export async function runAgent(
     durationMs: result.durationMs,
   });
 
+  // Emit brief output summary for activity feed
+  if (result.output) {
+    const firstLine = result.output
+      .split("\n")
+      .map((l) => l.trim())
+      .find((l) => l.length > 0);
+    if (firstLine) {
+      const summary =
+        firstLine.length > 120 ? firstLine.slice(0, 117) + "..." : firstLine;
+      void eventBus.emit({
+        type: "log:info",
+        ts: new Date().toISOString(),
+        runId: state.runId,
+        source: agent.id,
+        message: summary,
+      });
+    }
+  }
+
   const output: AgentOutput = {
     agentId: agent.id,
     taskId: input.task.id,
