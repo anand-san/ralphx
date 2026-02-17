@@ -30,6 +30,7 @@ ralphx start \
 ```
 
 **Required inputs:**
+
 - `--plan <path>` — Path to the PLAN.md file (default: `PLAN.md`)
 - `--tasks <path>` — Path to the tasks.json file (default: `tasks.json`)
 
@@ -50,11 +51,13 @@ ralphx start \
 | `--dry-run` | false | Print task plan without executing |
 
 **Constraints:**
+
 - Must be on `main` branch when starting (creates a new branch automatically)
 - Working tree must be clean unless `--allow-dirty` is set
 - The `--plan` file is free-form Markdown; `--tasks` must be valid JSON matching the TasksDocument schema
 
 **Example — foreground run:**
+
 ```bash
 ralphx start \
   --plan PLAN.md \
@@ -64,6 +67,7 @@ ralphx start \
 ```
 
 **Example — background daemon:**
+
 ```bash
 ralphx start \
   --plan PLAN.md \
@@ -88,11 +92,13 @@ ralphx resume --run <run-id> [options]
 Accepts same options as `start` except `--plan` and `--tasks` (already in sources/).
 
 **When to use:**
+
 - Run was blocked on a task and you want to retry after manual fixes
 - Run was stopped via `stop` command
 - Process crashed and you want to continue
 
 **Example:**
+
 ```bash
 ralphx resume --run 20260217-103000 --allow-dirty
 ```
@@ -187,6 +193,7 @@ The `--tasks` input must follow this exact structure:
 To spawn RalphX as a long-running background process from another agent:
 
 1. **Verify prerequisites:**
+
    ```bash
    # Check runtime is available
    claude --version  # or: codex --version
@@ -199,6 +206,7 @@ To spawn RalphX as a long-running background process from another agent:
    ```
 
 2. **Start in detached mode:**
+
    ```bash
    ralphx start \
      --plan PLAN.md \
@@ -210,6 +218,7 @@ To spawn RalphX as a long-running background process from another agent:
 3. **Capture the run ID** from stdout (format: `YYYYMMDD-HHMMSS`)
 
 4. **Monitor periodically:**
+
    ```bash
    ralphx status --run <run-id>
    ```
@@ -221,6 +230,7 @@ To spawn RalphX as a long-running background process from another agent:
    - `"running"` = still in progress
 
 6. **If blocked, review and resume:**
+
    ```bash
    # Read the handoff
    cat .ralphx/<run-id>/HANDOFF.md
@@ -272,28 +282,28 @@ done
 
 ## Error Recovery
 
-| Situation | Action |
-|---|---|
+| Situation             | Action                                                                   |
+| --------------------- | ------------------------------------------------------------------------ |
 | Run blocked on a task | Read `HANDOFF.md`, fix the issue, then `resume --run <id> --allow-dirty` |
-| Runtime not found | Install the CLI (`claude` or `codex`) and ensure it's in PATH |
-| Dirty working tree | Either commit/stash changes, or use `--allow-dirty` |
-| Not on main branch | Switch to main before starting: `git checkout main` |
-| All retries exhausted | Increase `--retry` and resume, or fix manually and resume |
-| Daemon won't stop | `kill -9 $(cat .ralphx/<run-id>/daemon.pid)` |
-| Quality gate failures | Fix the code issue, or use `--skip-quality-gates` for the resume |
+| Runtime not found     | Install the CLI (`claude` or `codex`) and ensure it's in PATH            |
+| Dirty working tree    | Either commit/stash changes, or use `--allow-dirty`                      |
+| Not on main branch    | Switch to main before starting: `git checkout main`                      |
+| All retries exhausted | Increase `--retry` and resume, or fix manually and resume                |
+| Daemon won't stop     | `kill -9 $(cat .ralphx/<run-id>/daemon.pid)`                             |
+| Quality gate failures | Fix the code issue, or use `--skip-quality-gates` for the resume         |
 
 ---
 
 ## Key Paths
 
-| Path | Purpose |
-|---|---|
-| `.ralphx/<run-id>/state.json` | Complete run state (read for status) |
-| `.ralphx/<run-id>/events.jsonl` | Event stream (tail for live monitoring) |
-| `.ralphx/<run-id>/HANDOFF.md` | Failure report with resume instructions |
-| `.ralphx/<run-id>/daemon.pid` | PID file for detached mode |
-| `.ralphx/<run-id>/sources/` | Immutable copies of input files |
-| `.ralphx/<run-id>/decisions/decisions.jsonl` | Orchestrator decision log |
-| `.ralphx/<run-id>/progress/` | Per-task agent progress reports |
-| `.ralphx/<run-id>/logs/` | Agent execution logs |
-| `.ralphx/<run-id>/messages/` | Agent output messages |
+| Path                                         | Purpose                                 |
+| -------------------------------------------- | --------------------------------------- |
+| `.ralphx/<run-id>/state.json`                | Complete run state (read for status)    |
+| `.ralphx/<run-id>/events.jsonl`              | Event stream (tail for live monitoring) |
+| `.ralphx/<run-id>/HANDOFF.md`                | Failure report with resume instructions |
+| `.ralphx/<run-id>/daemon.pid`                | PID file for detached mode              |
+| `.ralphx/<run-id>/sources/`                  | Immutable copies of input files         |
+| `.ralphx/<run-id>/decisions/decisions.jsonl` | Orchestrator decision log               |
+| `.ralphx/<run-id>/progress/`                 | Per-task agent progress reports         |
+| `.ralphx/<run-id>/logs/`                     | Agent execution logs                    |
+| `.ralphx/<run-id>/messages/`                 | Agent output messages                   |

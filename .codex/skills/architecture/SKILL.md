@@ -120,6 +120,7 @@ scripts/ralphx/
 ### Run
 
 A run is a single end-to-end execution of a task plan. It gets:
+
 - A unique ID (timestamp format: `YYYYMMDD-HHMMSS`)
 - A dedicated git branch (`ralphx-<run-id>`)
 - A self-contained directory (`.ralphx/<run-id>/`)
@@ -132,6 +133,7 @@ Phases are sequential groups of tasks (e.g., "Foundation", "Core Features"). A p
 ### Task
 
 A task is a single unit of work (e.g., "Implement user auth endpoint"). Tasks go through this lifecycle:
+
 ```
 pending → running → passed
                   → failed (retryable)
@@ -141,6 +143,7 @@ pending → running → passed
 ### Agent
 
 An agent is a specialized AI persona that performs a specific role. Each agent has:
+
 - An ID and human-readable name
 - Capabilities: `read`, `write`, `execute`, `commit`
 - A sandbox mode: `read-only`, `workspace-write`, `danger-full-access`
@@ -155,20 +158,20 @@ The abstraction over the AI CLI tool. Both providers implement the same interfac
 interface RuntimeProvider {
   name: string;
   execute(params: {
-    rootDir: string;           // Set via Bun.spawn({ cwd })
-    prompt: string;            // Piped via stdin
-    logPath: string;           // Where to write execution log
-    outputPath: string;        // Where provider writes output
+    rootDir: string; // Set via Bun.spawn({ cwd })
+    prompt: string; // Piped via stdin
+    logPath: string; // Where to write execution log
+    outputPath: string; // Where provider writes output
     model?: string;
     sandbox?: SandboxMode;
     timeout?: number;
     streamOutput?: boolean;
-    outputSchema?: object;     // JSON Schema for structured output
+    outputSchema?: object; // JSON Schema for structured output
   }): Promise<{
     exitCode: number;
     stdout: string;
     stderr: string;
-    output: string;            // Extracted/normalized output
+    output: string; // Extracted/normalized output
     durationMs: number;
   }>;
   isAvailable(): Promise<boolean>;
@@ -237,27 +240,28 @@ The EventBus (`monitor/event-bus.ts`) is the central nervous system. All compone
 
 ### Event Types
 
-| Event | When |
-|---|---|
-| `run:started` | Orchestrator begins |
-| `run:completed` | All phases complete |
-| `run:blocked` | Task blocked, run stops |
-| `task:started` | Task execution begins |
-| `task:completed` | Task passed QA + committed |
-| `task:blocked` | Task exhausted retries |
-| `agent:dispatched` | Agent process spawned |
-| `agent:completed` | Agent process finished |
-| `quality-gate:running` | Quality gates starting |
-| `quality-gate:passed` | All gates passed |
-| `quality-gate:failed` | A gate failed |
-| `decision:made` | Orchestrator recorded a decision |
-| `process:warning` | Agent at 80% of timeout |
-| `process:timeout` | Agent exceeded timeout |
-| `log:info/warn/error` | General logging |
+| Event                  | When                             |
+| ---------------------- | -------------------------------- |
+| `run:started`          | Orchestrator begins              |
+| `run:completed`        | All phases complete              |
+| `run:blocked`          | Task blocked, run stops          |
+| `task:started`         | Task execution begins            |
+| `task:completed`       | Task passed QA + committed       |
+| `task:blocked`         | Task exhausted retries           |
+| `agent:dispatched`     | Agent process spawned            |
+| `agent:completed`      | Agent process finished           |
+| `quality-gate:running` | Quality gates starting           |
+| `quality-gate:passed`  | All gates passed                 |
+| `quality-gate:failed`  | A gate failed                    |
+| `decision:made`        | Orchestrator recorded a decision |
+| `process:warning`      | Agent at 80% of timeout          |
+| `process:timeout`      | Agent exceeded timeout           |
+| `log:info/warn/error`  | General logging                  |
 
 ### Persistence
 
 Every event is appended to `.ralphx/<run-id>/events.jsonl` as one JSON line. This file is always written (not just in daemon mode) and is the source of truth for:
+
 - The TUI dashboard
 - The `attach` command
 - Post-run analysis
@@ -312,6 +316,7 @@ State is saved to `.ralphx/<run-id>/state.json` after every significant operatio
 ### Selectors (state/selectors.ts)
 
 Helper functions to query state:
+
 - `getTaskState(state, phaseId, taskId)` — find specific task
 - `getPhaseState(state, phaseId)` — find specific phase
 - `getPendingTasks(state)` — all pending tasks
@@ -339,6 +344,7 @@ interface AgentDefinition {
 ### Agent Registry
 
 Global registry at `agents/registry.ts`. Functions:
+
 - `registerAgent(agent)` — register an agent definition
 - `getAgent(id)` — retrieve by ID (throws if not found)
 - `listAgents()` — list all registered agents
@@ -353,22 +359,23 @@ Every agent receives rich context via `AgentInput`:
 
 ```typescript
 interface AgentInput {
-  task: PlanTask;                          // Current task details
-  phase: PlanPhase;                        // Current phase context
-  planPath: string;                        // Path to PLAN.md (in sources/)
-  tasksPath: string;                       // Path to tasks.json (in sources/)
-  previousOutputs: AgentOutput[];          // Outputs from prior agents on this task
-  peerProgress: Map<string, string>;       // Other agents' data (e.g., diff for commit-gen)
+  task: PlanTask; // Current task details
+  phase: PlanPhase; // Current phase context
+  planPath: string; // Path to PLAN.md (in sources/)
+  tasksPath: string; // Path to tasks.json (in sources/)
+  previousOutputs: AgentOutput[]; // Outputs from prior agents on this task
+  peerProgress: Map<string, string>; // Other agents' data (e.g., diff for commit-gen)
   previousFailedAttempts: FailedAttempt[]; // QA cycle failures (prevents loops)
-  failureContext?: string;                 // Error from previous retry
-  attempt: number;                         // Current attempt number
-  maxAttempts: number;                     // Total allowed attempts
+  failureContext?: string; // Error from previous retry
+  attempt: number; // Current attempt number
+  maxAttempts: number; // Total allowed attempts
 }
 ```
 
 ### Prompt Building
 
 `agents/prompts/context-builder.ts` provides utilities:
+
 - `buildContextBlock(input)` — XML block with phase, task, plan references
 - `buildPeerProgressBlock(map)` — peer agent progress data
 - `buildPreviousOutputsBlock(outputs)` — prior agent outputs
@@ -377,19 +384,19 @@ interface AgentInput {
 
 ### Agent Roster
 
-| ID | Role | Sandbox | Used In Default Flow |
-|---|---|---|---|
-| `software-developer` | Implements task | workspace-write | Yes — step 1 |
-| `qa-engineer` | Verifies implementation | read-only | Yes — step 3 |
-| `refactorer` | Style improvements | workspace-write | Yes — QA loop (REFACTOR) |
-| `bug-fixer` | Fix defects | workspace-write | Yes — QA loop (ISSUES) |
-| `commit-generator` | Conventional commit | read-only | Yes — step 4 |
-| `engineering-manager` | Triage/coordination | read-only | Available, not in default flow |
-| `product-manager` | Requirements | read-only | Available, not in default flow |
-| `product-designer` | UI/UX decisions | read-only | Available, not in default flow |
-| `orchestrator-planner` | Dynamic planning | read-only | Available, not in default flow |
-| `code-reviewer` | Code review | read-only | Available, not in default flow |
-| `doc-updater` | Doc updates | workspace-write | Available, not in default flow |
+| ID                     | Role                    | Sandbox         | Used In Default Flow           |
+| ---------------------- | ----------------------- | --------------- | ------------------------------ |
+| `software-developer`   | Implements task         | workspace-write | Yes — step 1                   |
+| `qa-engineer`          | Verifies implementation | read-only       | Yes — step 3                   |
+| `refactorer`           | Style improvements      | workspace-write | Yes — QA loop (REFACTOR)       |
+| `bug-fixer`            | Fix defects             | workspace-write | Yes — QA loop (ISSUES)         |
+| `commit-generator`     | Conventional commit     | read-only       | Yes — step 4                   |
+| `engineering-manager`  | Triage/coordination     | read-only       | Available, not in default flow |
+| `product-manager`      | Requirements            | read-only       | Available, not in default flow |
+| `product-designer`     | UI/UX decisions         | read-only       | Available, not in default flow |
+| `orchestrator-planner` | Dynamic planning        | read-only       | Available, not in default flow |
+| `code-reviewer`        | Code review             | read-only       | Available, not in default flow |
+| `doc-updater`          | Doc updates             | workspace-write | Available, not in default flow |
 
 ---
 
@@ -416,23 +423,24 @@ Can be skipped with `--skip-quality-gates` flag.
 
 ### Error Categories (errors/categories.ts)
 
-| Category | Recoverable | Max Retries | Description |
-|---|---|---|---|
-| `runtime_not_found` | false | 0 | CLI binary missing |
-| `runtime_crash` | true | 3 | Non-zero exit from runtime |
-| `runtime_timeout` | true | 2 | Exceeded timeout |
-| `agent_no_changes` | true | 3 | Agent produced no file changes |
-| `agent_invalid_output` | true | 2 | Unparseable output |
-| `gate_format` | true | 3 | Format check failed |
-| `gate_lint` | true | 3 | Lint check failed |
-| `gate_types` | true | 2 | Type check failed |
-| `gate_test` | true | 2 | Tests failed |
-| `git_conflict` | false | 0 | Merge conflict |
-| `task_blocked` | false | 0 | All retries exhausted |
+| Category               | Recoverable | Max Retries | Description                    |
+| ---------------------- | ----------- | ----------- | ------------------------------ |
+| `runtime_not_found`    | false       | 0           | CLI binary missing             |
+| `runtime_crash`        | true        | 3           | Non-zero exit from runtime     |
+| `runtime_timeout`      | true        | 2           | Exceeded timeout               |
+| `agent_no_changes`     | true        | 3           | Agent produced no file changes |
+| `agent_invalid_output` | true        | 2           | Unparseable output             |
+| `gate_format`          | true        | 3           | Format check failed            |
+| `gate_lint`            | true        | 3           | Lint check failed              |
+| `gate_types`           | true        | 2           | Type check failed              |
+| `gate_test`            | true        | 2           | Tests failed                   |
+| `git_conflict`         | false       | 0           | Merge conflict                 |
+| `task_blocked`         | false       | 0           | All retries exhausted          |
 
 ### Recovery Strategies (errors/recovery.ts)
 
 `getRecoveryStrategy(category, attemptsSoFar)` returns one of:
+
 - `"retry"` — try again with error context
 - `"retry_with_context"` — retry with detailed failure info
 - `"escalate_to_em"` — dispatch engineering manager agent
@@ -465,8 +473,8 @@ Append-only JSONL file at `.ralphx/<run-id>/decisions/decisions.jsonl`.
 
 ```typescript
 interface Decision {
-  ts: string;              // ISO timestamp
-  action: DecisionAction;  // "dispatch_agent" | "qa_verdict" | "task_complete" | etc.
+  ts: string; // ISO timestamp
+  action: DecisionAction; // "dispatch_agent" | "qa_verdict" | "task_complete" | etc.
   agentId?: string;
   taskId?: string;
   phaseId?: string;
@@ -479,6 +487,7 @@ interface Decision {
 ```
 
 Written by the orchestrator after every significant decision. Used for:
+
 - Resume (understanding where the run left off)
 - Audit trail
 - Post-run analysis
@@ -494,6 +503,7 @@ Written by the orchestrator after every significant decision. Used for:
 - **Branch created at start**: all task commits go to this branch
 
 Git operations are in `git/operations.ts`:
+
 - `ensureGitRepo`, `currentBranch`, `branchExists`
 - `createBranch`, `checkoutBranch`, `createRunBranch`
 - `ensureCleanWorkingTree`, `hasChanges`, `listChangedFiles`
@@ -506,19 +516,19 @@ Git operations are in `git/operations.ts`:
 
 Everything lives in `.ralphx/<run-id>/`:
 
-| File/Dir | Format | Purpose |
-|---|---|---|
-| `state.json` | JSON | Complete run state snapshot (overwritten each save) |
-| `events.jsonl` | JSONL | All events chronologically (append-only) |
-| `daemon.pid` | Text | Process ID for detached mode |
-| `HANDOFF.md` | Markdown | Failure report with resume instructions |
-| `sources/PLAN.md` | Markdown | Immutable copy of input plan |
-| `sources/tasks.json` | JSON | Immutable copy of input tasks |
-| `sources/team.json` | JSON | Immutable copy of team config (if provided) |
-| `decisions/decisions.jsonl` | JSONL | Orchestrator decision log (append-only) |
-| `progress/<task>.<agent>.md` | Markdown | Per-task agent progress summary |
-| `logs/<phase>/<task>.attempt-N.step-XX.<agent>.log` | Text | Agent execution logs |
-| `messages/<phase>/<task>.attempt-N.step-XX.<agent>.md` | Markdown | Agent output messages |
+| File/Dir                                               | Format   | Purpose                                             |
+| ------------------------------------------------------ | -------- | --------------------------------------------------- |
+| `state.json`                                           | JSON     | Complete run state snapshot (overwritten each save) |
+| `events.jsonl`                                         | JSONL    | All events chronologically (append-only)            |
+| `daemon.pid`                                           | Text     | Process ID for detached mode                        |
+| `HANDOFF.md`                                           | Markdown | Failure report with resume instructions             |
+| `sources/PLAN.md`                                      | Markdown | Immutable copy of input plan                        |
+| `sources/tasks.json`                                   | JSON     | Immutable copy of input tasks                       |
+| `sources/team.json`                                    | JSON     | Immutable copy of team config (if provided)         |
+| `decisions/decisions.jsonl`                            | JSONL    | Orchestrator decision log (append-only)             |
+| `progress/<task>.<agent>.md`                           | Markdown | Per-task agent progress summary                     |
+| `logs/<phase>/<task>.attempt-N.step-XX.<agent>.log`    | Text     | Agent execution logs                                |
+| `messages/<phase>/<task>.attempt-N.step-XX.<agent>.md` | Markdown | Agent output messages                               |
 
 The `.ralphx/` directory has a `.gitignore` that ignores everything — no repo pollution.
 
@@ -534,17 +544,17 @@ bun test
 
 ### Test Files
 
-| File | Tests | What it covers |
-|---|---|---|
-| `state.test.ts` | 13 | Run state CRUD, paths, selectors, source copying |
-| `event-bus.test.ts` | 4 | Event listeners, wildcard, JSONL persistence |
-| `scheduler.test.ts` | 6 | Task scheduling, run completion detection |
-| `decision-log.test.ts` | 3 | JSONL decision append/read |
-| `agents.test.ts` | 7 | Registry, default agents, prompt building |
-| `errors.test.ts` | 8 | Error categories, recovery strategies |
-| `cli.test.ts` | 8 | CLI argument parsing |
-| `config.test.ts` | 4 | Zod schema validation |
-| `tui-store.test.ts` | 5 | TUI state management, event reducer |
+| File                   | Tests | What it covers                                   |
+| ---------------------- | ----- | ------------------------------------------------ |
+| `state.test.ts`        | 13    | Run state CRUD, paths, selectors, source copying |
+| `event-bus.test.ts`    | 4     | Event listeners, wildcard, JSONL persistence     |
+| `scheduler.test.ts`    | 6     | Task scheduling, run completion detection        |
+| `decision-log.test.ts` | 3     | JSONL decision append/read                       |
+| `agents.test.ts`       | 7     | Registry, default agents, prompt building        |
+| `errors.test.ts`       | 8     | Error categories, recovery strategies            |
+| `cli.test.ts`          | 8     | CLI argument parsing                             |
+| `config.test.ts`       | 4     | Zod schema validation                            |
+| `tui-store.test.ts`    | 5     | TUI state management, event reducer              |
 
 ### Testing Patterns
 
@@ -559,6 +569,7 @@ bun test
 ### Adding a New Agent
 
 1. Create the agent definition in `agents/built-in/` or `agents/mini/`:
+
    ```typescript
    import type { AgentDefinition } from "../base-agent";
    import { buildContextBlock } from "../prompts/context-builder";
@@ -576,6 +587,7 @@ bun test
    ```
 
 2. Register it in `agents/register-defaults.ts`:
+
    ```typescript
    import { myAgent } from "./built-in/my-agent";
    registerAgent(myAgent);
@@ -586,6 +598,7 @@ bun test
 ### Adding a New Runtime Provider
 
 1. Implement `RuntimeProvider` interface in `runtime/providers/`:
+
    ```typescript
    import type { RuntimeProvider } from "../provider";
 
@@ -618,15 +631,15 @@ bun test
 
 ## Key Design Decisions
 
-| Decision | Rationale |
-|---|---|
-| JSONL for events/decisions | Append-only, crash-safe, easy to tail, no corruption from partial writes |
-| Source file copying | Resume works even if originals are deleted |
-| One branch per run | Avoids merge conflicts between tasks |
-| Dependency injection | Makes orchestrator testable without real git/runtime |
-| Sequential execution | V1 simplicity; concurrency support designed in but set to 1 |
-| Full-auto AI mode | V1 trusts agents via prompts; sandbox hardening deferred to V2 |
-| Conventional commits | Machine-readable commit history, compatible with semantic versioning |
-| QA loop with failed attempt tracking | Prevents agents from repeating the same broken approach |
-| Heartbeat + watchdog | Detects and kills hung processes for unattended operation |
-| Event bus decoupling | Orchestrator, TUI, and monitors don't directly depend on each other |
+| Decision                             | Rationale                                                                |
+| ------------------------------------ | ------------------------------------------------------------------------ |
+| JSONL for events/decisions           | Append-only, crash-safe, easy to tail, no corruption from partial writes |
+| Source file copying                  | Resume works even if originals are deleted                               |
+| One branch per run                   | Avoids merge conflicts between tasks                                     |
+| Dependency injection                 | Makes orchestrator testable without real git/runtime                     |
+| Sequential execution                 | V1 simplicity; concurrency support designed in but set to 1              |
+| Full-auto AI mode                    | V1 trusts agents via prompts; sandbox hardening deferred to V2           |
+| Conventional commits                 | Machine-readable commit history, compatible with semantic versioning     |
+| QA loop with failed attempt tracking | Prevents agents from repeating the same broken approach                  |
+| Heartbeat + watchdog                 | Detects and kills hung processes for unattended operation                |
+| Event bus decoupling                 | Orchestrator, TUI, and monitors don't directly depend on each other      |
