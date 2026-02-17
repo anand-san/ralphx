@@ -1054,6 +1054,18 @@ async function executeTaskFlow(
       } catch (runError) {
         const category: FailureCategory = "runtime_crash";
         lastFailure = `${agentId} crashed: ${runError instanceof Error ? runError.message : String(runError)}`;
+
+        // Guide retry agents to discover partial work via git
+        const crashedAgent = getAgent(agentId);
+        if (crashedAgent.capabilities.includes("write")) {
+          const partialFiles = await deps
+            .listChangedFiles(rootDir)
+            .catch(() => []);
+          if (partialFiles.length > 0) {
+            lastFailure += `\nPartial changes detected in working tree (${partialFiles.length} files). The next agent should run \`git diff\` to understand what was already implemented and continue from there.`;
+          }
+        }
+
         taskState.lastError = lastFailure;
         await deps.saveRunState(statePath, state);
         await eventBus.emit({
@@ -1071,6 +1083,17 @@ async function executeTaskFlow(
         const category: FailureCategory = "runtime_crash";
         const strategy = getRecoveryStrategy(category, attempt);
         lastFailure = `${agentId} failed with code ${output.exitCode}`;
+
+        // Guide retry agents to discover partial work via git
+        const failedAgent = getAgent(agentId);
+        if (failedAgent.capabilities.includes("write")) {
+          const partialFiles = await deps
+            .listChangedFiles(rootDir)
+            .catch(() => []);
+          if (partialFiles.length > 0) {
+            lastFailure += `\nPartial changes detected in working tree (${partialFiles.length} files). The next agent should run \`git diff\` to understand what was already implemented and continue from there.`;
+          }
+        }
         taskState.lastError = lastFailure;
         taskState.lastExitCode = output.exitCode;
         await deps.saveRunState(statePath, state);
