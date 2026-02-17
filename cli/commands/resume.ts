@@ -1,6 +1,9 @@
 import { resolve } from "node:path";
+import { readFile } from "node:fs/promises";
 import type { RunnerOptions } from "../../state/types";
-import { getRalphxDir } from "../../state/run-state";
+import type { TeamConfig } from "../../config/types";
+import { teamConfigSchema } from "../../config/schema";
+import { getRalphxDir, saveRunState } from "../../state/run-state";
 import { loadResumeContext } from "../../orchestrator/resume";
 import {
   currentBranch,
@@ -56,6 +59,17 @@ export async function resumeCommand(options: RunnerOptions): Promise<void> {
     }
   }
 
+  // Load team config
+  let teamConfig: TeamConfig | undefined;
+  if (state.teamConfigPath) {
+    try {
+      const teamRaw = await readFile(state.teamConfigPath, "utf8");
+      teamConfig = teamConfigSchema.parse(JSON.parse(teamRaw) as unknown);
+    } catch {
+      // Team config may have been removed; continue with defaults
+    }
+  }
+
   // Event bus
   const eventBus = getEventBus();
   eventBus.setEventsPath(state.eventsPath);
@@ -85,6 +99,22 @@ export async function resumeCommand(options: RunnerOptions): Promise<void> {
 
   console.log(`Resuming RalphX run ${state.runId} on branch ${state.branch}`);
 
+  const onSignal = async (signal: "SIGTERM" | "SIGINT") => {
+    state.status = "blocked";
+    await saveRunState(statePath, state);
+    heartbeat.stop();
+    watchdog.stop();
+    await eventBus.emit({
+      type: "run:blocked",
+      ts: new Date().toISOString(),
+      runId: state.runId,
+      details: `Run interrupted by ${signal}`,
+    });
+    process.exit(signal === "SIGTERM" ? 143 : 130);
+  };
+  process.on("SIGTERM", () => void onSignal("SIGTERM"));
+  process.on("SIGINT", () => void onSignal("SIGINT"));
+
   try {
     await executeOrchestrator({
       rootDir,
@@ -97,14 +127,19 @@ export async function resumeCommand(options: RunnerOptions): Promise<void> {
       streamOutput: !options.noTui,
       skipQualityGates: options.skipQualityGates,
       timeout: options.timeout,
+      teamConfig,
     });
   } finally {
     heartbeat.stop();
     watchdog.stop();
+    process.removeAllListeners("SIGTERM");
+    process.removeAllListeners("SIGINT");
   }
 
   const finalStatus = state.status as string;
-  console.log(`\nRalphX run ${state.runId} finished with status: ${finalStatus}`);
+  console.log(
+    `\nRalphX run ${state.runId} finished with status: ${finalStatus}`,
+  );
   if (finalStatus === "blocked") {
     console.log(`Handoff: ${state.handoffPath}`);
   }

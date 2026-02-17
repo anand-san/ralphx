@@ -199,9 +199,10 @@ export interface RunnerOptions {
   retry: number;
   timeout: number;
   heartbeatInterval: number;
-  concurrency: number;
   noTui: boolean;
   detached: boolean;
+  /** Internal flag: set when re-spawned as daemon child */
+  _daemon: boolean;
   model?: string;
   skipQualityGates: boolean;
   allowDirty: boolean;

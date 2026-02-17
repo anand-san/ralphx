@@ -1,7 +1,12 @@
 import type { RuntimeProvider } from "../runtime/provider";
 import type { EventBus } from "../monitor/event-bus";
 import type { AgentDefinition } from "./base-agent";
-import type { AgentInput, AgentOutput, RunState } from "../state/types";
+import type {
+  AgentInput,
+  AgentOutput,
+  AgentRuntimeState,
+  RunState,
+} from "../state/types";
 import { buildStepArtifacts } from "../state/artifacts";
 
 export interface AgentRunnerParams {
@@ -31,6 +36,22 @@ export async function runAgent(
     agent: agent.id,
   });
 
+  // Track agent in state.agents[]
+  const agentEntry: AgentRuntimeState = {
+    agentId: agent.id,
+    taskId: input.task.id,
+    phaseId: input.phase.id,
+    runtime: runtime.name as AgentRuntimeState["runtime"],
+    status: "running",
+    startedAt: new Date().toISOString(),
+  };
+  const existingIdx = state.agents.findIndex((a) => a.agentId === agent.id);
+  if (existingIdx >= 0) {
+    state.agents[existingIdx] = agentEntry;
+  } else {
+    state.agents.push(agentEntry);
+  }
+
   // Emit dispatch event
   await eventBus.emit({
     type: "agent:dispatched",
@@ -52,6 +73,14 @@ export async function runAgent(
     timeout: params.timeout,
     streamOutput: params.streamOutput,
   });
+
+  // Update agent entry in state.agents[]
+  const completedEntry = state.agents.find((a) => a.agentId === agent.id);
+  if (completedEntry) {
+    completedEntry.status = result.exitCode === 0 ? "completed" : "failed";
+    completedEntry.completedAt = new Date().toISOString();
+    completedEntry.exitCode = result.exitCode;
+  }
 
   // Emit completion event
   await eventBus.emit({

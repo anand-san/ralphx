@@ -9,7 +9,6 @@ describe("parseCliOptions", () => {
     expect(opts.retry).toBe(3);
     expect(opts.timeout).toBe(600000);
     expect(opts.heartbeatInterval).toBe(30000);
-    expect(opts.concurrency).toBe(1);
     expect(opts.noTui).toBe(false);
     expect(opts.detached).toBe(false);
     expect(opts.skipQualityGates).toBe(false);
@@ -34,8 +33,6 @@ describe("parseCliOptions", () => {
       "300000",
       "--heartbeat-interval",
       "10000",
-      "--concurrency",
-      "2",
       "--model",
       "gpt-4",
       "--no-tui",
@@ -50,7 +47,6 @@ describe("parseCliOptions", () => {
     expect(opts.retry).toBe(5);
     expect(opts.timeout).toBe(300000);
     expect(opts.heartbeatInterval).toBe(10000);
-    expect(opts.concurrency).toBe(2);
     expect(opts.model).toBe("gpt-4");
     expect(opts.noTui).toBe(true);
     expect(opts.skipQualityGates).toBe(true);

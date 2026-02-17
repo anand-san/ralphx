@@ -10,20 +10,56 @@ export const taskSchema = z.object({
   notes: z.array(z.string()),
 });
 
-export const phaseSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  goal: z.string().min(1),
-  exitCriteria: z.array(z.string()),
-  tasks: z.array(taskSchema).min(1),
-});
+export const phaseSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    goal: z.string().min(1),
+    exitCriteria: z.array(z.string()),
+    tasks: z.array(taskSchema).min(1),
+  })
+  .superRefine((phase, ctx) => {
+    const seen = new Set<string>();
+    for (const task of phase.tasks) {
+      if (seen.has(task.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Duplicate task ID "${task.id}" within phase "${phase.id}"`,
+        });
+      }
+      seen.add(task.id);
+    }
+  });
 
-export const tasksDocumentSchema = z.object({
-  idea: z.string().min(1),
-  generatedAt: z.string().min(1),
-  repo: z.string().min(1),
-  phases: z.array(phaseSchema).min(1),
-});
+export const tasksDocumentSchema = z
+  .object({
+    idea: z.string().min(1),
+    generatedAt: z.string().min(1),
+    repo: z.string().min(1),
+    phases: z.array(phaseSchema).min(1),
+  })
+  .superRefine((doc, ctx) => {
+    const phaseIds = new Set<string>();
+    const taskIds = new Set<string>();
+    for (const phase of doc.phases) {
+      if (phaseIds.has(phase.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Duplicate phase ID "${phase.id}"`,
+        });
+      }
+      phaseIds.add(phase.id);
+      for (const task of phase.tasks) {
+        if (taskIds.has(task.id)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Duplicate task ID "${task.id}" across phases`,
+          });
+        }
+        taskIds.add(task.id);
+      }
+    }
+  });
 
 // ── Team config validation ──
 

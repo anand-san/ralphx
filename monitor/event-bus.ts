@@ -33,7 +33,11 @@ export class EventBus {
     const typeListeners = this.listeners.get(event.type);
     if (typeListeners) {
       for (const listener of typeListeners) {
-        listener(event);
+        try {
+          listener(event);
+        } catch (err) {
+          console.error(`EventBus listener error on "${event.type}":`, err);
+        }
       }
     }
 
@@ -41,7 +45,14 @@ export class EventBus {
     const wildcardListeners = this.listeners.get("*");
     if (wildcardListeners) {
       for (const listener of wildcardListeners) {
-        listener(event);
+        try {
+          listener(event);
+        } catch (err) {
+          console.error(
+            `EventBus wildcard listener error on "${event.type}":`,
+            err,
+          );
+        }
       }
     }
 

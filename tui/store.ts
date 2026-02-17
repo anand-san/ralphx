@@ -72,6 +72,9 @@ export function createInitialTuiState(state: RunState): TuiState {
       { id: "product-designer", name: "PD", status: "idle" },
       { id: "software-developer", name: "DEV", status: "idle" },
       { id: "qa-engineer", name: "QA", status: "idle" },
+      { id: "bug-fixer", name: "FIX", status: "idle" },
+      { id: "refactorer", name: "REF", status: "idle" },
+      { id: "commit-generator", name: "CMT", status: "idle" },
     ],
     tasks: state.tasks.map((t) => ({
       id: t.id,
@@ -92,11 +95,24 @@ export function applyEvent(tuiState: TuiState, event: RalphxEvent): TuiState {
 
   switch (event.type) {
     case "agent:dispatched": {
-      next.agents = next.agents.map((a) =>
-        a.id === event.agentId
-          ? { ...a, status: "running" as const, taskId: event.taskId }
-          : a,
-      );
+      const knownAgent = next.agents.find((a) => a.id === event.agentId);
+      if (knownAgent) {
+        next.agents = next.agents.map((a) =>
+          a.id === event.agentId
+            ? { ...a, status: "running" as const, taskId: event.taskId }
+            : a,
+        );
+      } else {
+        next.agents = [
+          ...next.agents,
+          {
+            id: event.agentId,
+            name: event.agentId.slice(0, 3).toUpperCase(),
+            status: "running" as const,
+            taskId: event.taskId,
+          },
+        ];
+      }
       next.logs = [
         ...next.logs.slice(-99),
         {
@@ -142,6 +158,14 @@ export function applyEvent(tuiState: TuiState, event: RalphxEvent): TuiState {
         status: "idle" as const,
         taskId: undefined,
       }));
+      break;
+    }
+    case "task:failed": {
+      next.tasks = next.tasks.map((t) =>
+        t.id === event.taskId
+          ? { ...t, status: "failed", error: event.failureDetails }
+          : t,
+      );
       break;
     }
     case "task:blocked": {

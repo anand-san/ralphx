@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { TasksDocument } from "../state/types";
+import { tasksDocumentSchema } from "../config/schema";
 
 /**
  * Load the tasks document from the sources directory (copied at start).
@@ -9,7 +10,7 @@ export async function loadTasksFromSources(
   sourcesDir: string,
 ): Promise<TasksDocument> {
   const raw = await readFile(join(sourcesDir, "tasks.json"), "utf8");
-  return JSON.parse(raw) as TasksDocument;
+  return tasksDocumentSchema.parse(JSON.parse(raw) as unknown);
 }
 
 /**

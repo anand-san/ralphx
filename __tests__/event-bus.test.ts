@@ -79,6 +79,47 @@ describe("EventBus", () => {
     expect(received).toHaveLength(1);
   });
 
+  it("does not crash emit chain when listener throws", async () => {
+    const bus = new EventBus();
+    const received: RalphxEvent[] = [];
+
+    bus.on("log:info", () => {
+      throw new Error("boom");
+    });
+    bus.on("log:info", (event) => received.push(event));
+
+    await bus.emit({
+      type: "log:info",
+      ts: "2026-01-01T00:00:00Z",
+      runId: "test",
+      message: "still delivered",
+      source: "test",
+    });
+
+    expect(received).toHaveLength(1);
+    expect((received[0] as LogEvent).message).toBe("still delivered");
+  });
+
+  it("does not crash emit chain when wildcard listener throws", async () => {
+    const bus = new EventBus();
+    const received: RalphxEvent[] = [];
+
+    bus.on("*", () => {
+      throw new Error("wildcard boom");
+    });
+    bus.on("*", (event) => received.push(event));
+
+    await bus.emit({
+      type: "log:info",
+      ts: "2026-01-01T00:00:00Z",
+      runId: "test",
+      message: "still delivered",
+      source: "test",
+    });
+
+    expect(received).toHaveLength(1);
+  });
+
   it("persists events to file", async () => {
     const bus = new EventBus();
     const eventsPath = `${TEST_DIR}/events.jsonl`;

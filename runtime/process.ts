@@ -55,11 +55,14 @@ export async function runProcess(
 
   // Run with optional timeout
   if (params.timeout && params.timeout > 0) {
+    let outerTimer: ReturnType<typeof setTimeout> | undefined;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
+      outerTimer = setTimeout(() => {
         proc.kill("SIGTERM");
         // Force kill after 5s grace period
-        setTimeout(() => proc.kill("SIGKILL"), 5000);
+        killTimer = setTimeout(() => proc.kill("SIGKILL"), 5000);
         reject(new Error(`Process timed out after ${params.timeout}ms`));
       }, params.timeout);
     });
@@ -82,6 +85,9 @@ export async function runProcess(
         throw error;
       }
       throw error;
+    } finally {
+      clearTimeout(outerTimer);
+      clearTimeout(killTimer);
     }
   }
 

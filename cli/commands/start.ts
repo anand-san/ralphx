@@ -1,7 +1,9 @@
-import { resolve } from "node:path";
-import { writeFile } from "node:fs/promises";
+import { resolve, join } from "node:path";
+import { writeFile, open } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import type { RunnerOptions, TasksDocument } from "../../state/types";
-import { tasksDocumentSchema } from "../../config/schema";
+import type { TeamConfig } from "../../config/types";
+import { tasksDocumentSchema, teamConfigSchema } from "../../config/schema";
 import { readFile } from "node:fs/promises";
 import {
   buildRunId,
@@ -105,6 +107,13 @@ export async function startCommand(options: RunnerOptions): Promise<void> {
     );
   }
 
+  // Load team config
+  let teamConfig: TeamConfig | undefined;
+  if (teamPath) {
+    const teamRaw = await readFile(teamPath, "utf8");
+    teamConfig = teamConfigSchema.parse(JSON.parse(teamRaw) as unknown);
+  }
+
   // Monitoring
   const heartbeat = new HeartbeatMonitor({
     eventBus,
@@ -117,17 +126,60 @@ export async function startCommand(options: RunnerOptions): Promise<void> {
   heartbeat.start();
   watchdog.start();
 
-  // Detached mode: write PID and detach
-  if (options.detached) {
-    await writeFile(paths.pidPath, String(process.pid), "utf8");
-    console.log(`RalphX daemon started (PID ${process.pid})`);
+  // Detached mode: spawn daemon child and exit parent
+  if (options.detached && !options._daemon) {
+    const logPath = join(paths.runDir, "daemon.log");
+    const logFd = await open(logPath, "w");
+    const logStream = logFd.createWriteStream();
+
+    // Build child args: same args minus --detached, plus --_daemon
+    const childArgs = process.argv
+      .slice(1)
+      .filter((a) => a !== "--detached")
+      .concat("--_daemon");
+
+    const child = spawn(process.argv[0]!, childArgs, {
+      stdio: ["ignore", logStream, logStream],
+      detached: true,
+      cwd: rootDir,
+    });
+    child.unref();
+
+    await writeFile(paths.pidPath, String(child.pid), "utf8");
+    console.log(`RalphX daemon started (PID ${child.pid})`);
     console.log(`Run ID: ${runId}`);
+    console.log(`Log: ${logPath}`);
     console.log(`Attach: ralphx attach --run ${runId}`);
-  } else {
+    process.exit(0);
+  }
+
+  // Daemon child: ignore SIGHUP so it survives terminal close
+  if (options._daemon) {
+    process.on("SIGHUP", () => {});
+    await writeFile(paths.pidPath, String(process.pid), "utf8");
+  }
+
+  if (!options._daemon) {
     console.log(`RalphX run ${runId} started on branch ${branch}`);
     console.log(`Runtime: ${options.runtime}`);
     console.log(`Retry limit: ${options.retry}`);
   }
+
+  const onSignal = async (signal: "SIGTERM" | "SIGINT") => {
+    state.status = "blocked";
+    await saveRunState(paths.statePath, state);
+    heartbeat.stop();
+    watchdog.stop();
+    await eventBus.emit({
+      type: "run:blocked",
+      ts: new Date().toISOString(),
+      runId: state.runId,
+      details: `Run interrupted by ${signal}`,
+    });
+    process.exit(signal === "SIGTERM" ? 143 : 130);
+  };
+  process.on("SIGTERM", () => void onSignal("SIGTERM"));
+  process.on("SIGINT", () => void onSignal("SIGINT"));
 
   try {
     await executeOrchestrator({
@@ -141,10 +193,13 @@ export async function startCommand(options: RunnerOptions): Promise<void> {
       streamOutput: !options.noTui,
       skipQualityGates: options.skipQualityGates,
       timeout: options.timeout,
+      teamConfig,
     });
   } finally {
     heartbeat.stop();
     watchdog.stop();
+    process.removeAllListeners("SIGTERM");
+    process.removeAllListeners("SIGINT");
   }
 
   // Report result

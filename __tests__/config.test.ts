@@ -69,6 +69,124 @@ describe("tasksDocumentSchema", () => {
       }),
     ).toThrow();
   });
+
+  it("rejects duplicate task IDs within a phase", () => {
+    expect(() =>
+      tasksDocumentSchema.parse({
+        idea: "Test",
+        generatedAt: "2026",
+        repo: "r",
+        phases: [
+          {
+            id: "p1",
+            name: "P",
+            goal: "G",
+            exitCriteria: [],
+            tasks: [
+              {
+                id: "t1",
+                status: "todo",
+                title: "A",
+                description: "D",
+                notes: [],
+              },
+              {
+                id: "t1",
+                status: "todo",
+                title: "B",
+                description: "D",
+                notes: [],
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow("Duplicate task ID");
+  });
+
+  it("rejects duplicate task IDs across phases", () => {
+    expect(() =>
+      tasksDocumentSchema.parse({
+        idea: "Test",
+        generatedAt: "2026",
+        repo: "r",
+        phases: [
+          {
+            id: "p1",
+            name: "P1",
+            goal: "G",
+            exitCriteria: [],
+            tasks: [
+              {
+                id: "t1",
+                status: "todo",
+                title: "A",
+                description: "D",
+                notes: [],
+              },
+            ],
+          },
+          {
+            id: "p2",
+            name: "P2",
+            goal: "G",
+            exitCriteria: [],
+            tasks: [
+              {
+                id: "t1",
+                status: "todo",
+                title: "B",
+                description: "D",
+                notes: [],
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow("Duplicate task ID");
+  });
+
+  it("rejects duplicate phase IDs", () => {
+    expect(() =>
+      tasksDocumentSchema.parse({
+        idea: "Test",
+        generatedAt: "2026",
+        repo: "r",
+        phases: [
+          {
+            id: "p1",
+            name: "P1",
+            goal: "G",
+            exitCriteria: [],
+            tasks: [
+              {
+                id: "t1",
+                status: "todo",
+                title: "A",
+                description: "D",
+                notes: [],
+              },
+            ],
+          },
+          {
+            id: "p1",
+            name: "P2",
+            goal: "G",
+            exitCriteria: [],
+            tasks: [
+              {
+                id: "t2",
+                status: "todo",
+                title: "B",
+                description: "D",
+                notes: [],
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow("Duplicate phase ID");
+  });
 });
 
 describe("teamConfigSchema", () => {

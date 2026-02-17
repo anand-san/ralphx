@@ -15,7 +15,7 @@ function buildPrompt(input: AgentInput): string {
       (o) =>
         o.parsed &&
         typeof o.parsed === "object" &&
-        "notes" in (o.parsed as object)
+        "notes" in (o.parsed as object),
     )
     .flatMap((o) => {
       const p = o.parsed as { notes?: unknown };

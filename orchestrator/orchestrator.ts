@@ -11,6 +11,7 @@ import type {
   RunState,
   TasksDocument,
 } from "../state/types";
+import type { TeamConfig } from "../config/types";
 import { getAgent } from "../agents/registry";
 import { runAgent } from "../agents/agent-runner";
 import { appendDecision } from "./decision-log";
@@ -39,6 +40,8 @@ import {
   stagedDiff,
   stagedDiffStat,
 } from "../git/operations";
+import { getRecoveryStrategy, type RecoveryStrategy } from "../errors/recovery";
+import { categorizeQualityGateFailure } from "../errors/categories";
 
 const MAX_QA_CYCLES = 5;
 
@@ -53,6 +56,23 @@ export interface OrchestratorParams {
   streamOutput: boolean;
   skipQualityGates: boolean;
   timeout?: number;
+  teamConfig?: TeamConfig;
+}
+
+function resolveAgentIds(teamConfig?: TeamConfig): {
+  implementer: string;
+  reviewer: string;
+} {
+  if (!teamConfig) {
+    return { implementer: "software-developer", reviewer: "qa-engineer" };
+  }
+  const implementer =
+    teamConfig.roles.find((r) => r.permissions.canWrite)?.id ??
+    "software-developer";
+  const reviewer =
+    teamConfig.roles.find((r) => r.id.includes("qa") || r.id.includes("review"))
+      ?.id ?? "qa-engineer";
+  return { implementer, reviewer };
 }
 
 export interface OrchestratorDependencies {
@@ -131,6 +151,7 @@ export async function executeOrchestrator(
           streamOutput: params.streamOutput,
           skipQualityGates: params.skipQualityGates,
           timeout: params.timeout,
+          teamConfig: params.teamConfig,
         },
         deps,
       );
@@ -200,6 +221,67 @@ interface TaskFlowResult {
   failureDetails?: string;
 }
 
+async function escalateToEM(
+  params: {
+    state: RunState;
+    phase: PlanPhase;
+    planTask: PlanTask;
+    runtime: RuntimeProvider;
+    eventBus: EventBus;
+    failureContext: string;
+    stepSequence: number;
+    model?: string;
+    streamOutput: boolean;
+    timeout?: number;
+  },
+  deps: OrchestratorDependencies,
+): Promise<void> {
+  try {
+    const emAgent = getAgent("engineering-manager");
+    const emInput: AgentInput = {
+      task: params.planTask,
+      phase: params.phase,
+      planPath: getSourcesPlanPath(params.state.sourcesDir),
+      tasksPath: getSourcesTasksPath(params.state.sourcesDir),
+      previousOutputs: [],
+      peerProgress: new Map([["failureContext", params.failureContext]]),
+      previousFailedAttempts: [],
+      attempt: 1,
+      maxAttempts: 1,
+    };
+
+    const emOutput = await deps.runAgent({
+      agent: emAgent,
+      input: emInput,
+      runtime: params.runtime,
+      state: params.state,
+      stepSequence: params.stepSequence + 100,
+      eventBus: params.eventBus,
+      model: params.model,
+      streamOutput: params.streamOutput,
+      timeout: params.timeout,
+    });
+
+    await deps.appendDecision(params.state.decisionsDir, {
+      ts: new Date().toISOString(),
+      action: "escalate",
+      agentId: "engineering-manager",
+      taskId: params.planTask.id,
+      outcome: `EM recommendation: ${emOutput.raw.slice(0, 500)}`,
+    });
+
+    await params.eventBus.emit({
+      type: "log:info",
+      ts: new Date().toISOString(),
+      runId: params.state.runId,
+      message: `EM escalation for ${params.planTask.id}: ${emOutput.raw.slice(0, 200)}`,
+      source: "engineering-manager",
+    });
+  } catch (err) {
+    console.error("EM escalation failed (best-effort):", err);
+  }
+}
+
 async function executeTaskFlow(
   params: {
     rootDir: string;
@@ -213,11 +295,13 @@ async function executeTaskFlow(
     streamOutput: boolean;
     skipQualityGates: boolean;
     timeout?: number;
+    teamConfig?: TeamConfig;
   },
   deps: OrchestratorDependencies,
 ): Promise<TaskFlowResult> {
   const { rootDir, state, statePath, phase, planTask, runtime, eventBus } =
     params;
+  const { implementer, reviewer } = resolveAgentIds(params.teamConfig);
   const taskState = getTaskState(state, phase.id, planTask.id);
   const maxAttempts = state.retryLimit + 1;
   let lastFailure = "";
@@ -239,7 +323,7 @@ async function executeTaskFlow(
     const previousOutputs: AgentOutput[] = [];
     const failedAttempts: FailedAttempt[] = [];
 
-    // Step 1: Software Developer implements
+    // Step 1: Implementer agent
     stepSequence += 1;
     const devInput: AgentInput = {
       task: planTask,
@@ -254,7 +338,7 @@ async function executeTaskFlow(
       maxAttempts,
     };
 
-    const devAgent = getAgent("software-developer");
+    const devAgent = getAgent(implementer);
     const devOutput = await deps.runAgent({
       agent: devAgent,
       input: devInput,
@@ -268,7 +352,9 @@ async function executeTaskFlow(
     });
 
     if (devOutput.exitCode !== 0) {
-      lastFailure = `software-developer failed with code ${devOutput.exitCode}`;
+      const category: FailureCategory = "runtime_crash";
+      const strategy = getRecoveryStrategy(category, attempt);
+      lastFailure = `${implementer} failed with code ${devOutput.exitCode}`;
       taskState.lastError = lastFailure;
       taskState.lastExitCode = devOutput.exitCode;
       await deps.saveRunState(statePath, state);
@@ -276,10 +362,35 @@ async function executeTaskFlow(
       await deps.appendDecision(state.decisionsDir, {
         ts: new Date().toISOString(),
         action: "dispatch_agent",
-        agentId: "software-developer",
+        agentId: implementer,
         taskId: planTask.id,
-        outcome: `failed (exit ${devOutput.exitCode})`,
+        outcome: `failed (exit ${devOutput.exitCode}), strategy: ${strategy}`,
       });
+
+      if (strategy === "block_and_handoff") {
+        return {
+          success: false,
+          failureCategory: category,
+          failureDetails: lastFailure,
+        };
+      }
+      if (strategy === "escalate_to_em") {
+        await escalateToEM(
+          {
+            state,
+            phase,
+            planTask,
+            runtime,
+            eventBus,
+            failureContext: lastFailure,
+            stepSequence,
+            model: params.model,
+            streamOutput: params.streamOutput,
+            timeout: params.timeout,
+          },
+          deps,
+        );
+      }
       continue;
     }
 
@@ -288,17 +399,44 @@ async function executeTaskFlow(
     // Check for changed files
     const changedFiles = await deps.listChangedFiles(rootDir);
     if (changedFiles.length === 0) {
-      lastFailure = "No repository changes detected after software-developer";
+      const category: FailureCategory = "agent_no_changes";
+      const strategy = getRecoveryStrategy(category, attempt);
+      lastFailure = `No repository changes detected after ${implementer}`;
       taskState.lastError = lastFailure;
       await deps.saveRunState(statePath, state);
 
       await deps.appendDecision(state.decisionsDir, {
         ts: new Date().toISOString(),
         action: "dispatch_agent",
-        agentId: "software-developer",
+        agentId: implementer,
         taskId: planTask.id,
-        outcome: "no_changes",
+        outcome: `no_changes, strategy: ${strategy}`,
       });
+
+      if (strategy === "block_and_handoff") {
+        return {
+          success: false,
+          failureCategory: category,
+          failureDetails: lastFailure,
+        };
+      }
+      if (strategy === "escalate_to_em") {
+        await escalateToEM(
+          {
+            state,
+            phase,
+            planTask,
+            runtime,
+            eventBus,
+            failureContext: lastFailure,
+            stepSequence,
+            model: params.model,
+            streamOutput: params.streamOutput,
+            timeout: params.timeout,
+          },
+          deps,
+        );
+      }
       continue;
     }
 
@@ -326,6 +464,10 @@ async function executeTaskFlow(
       });
 
       if (!gateResult.passed) {
+        const gateCategory = categorizeQualityGateFailure(
+          gateResult.failedStep ?? "unknown",
+        );
+        const gateStrategy = getRecoveryStrategy(gateCategory, attempt);
         lastFailure = gateResult.details;
         taskState.lastError = lastFailure;
         taskState.lastQualityGate = gateResult.failedStep;
@@ -338,6 +480,69 @@ async function executeTaskFlow(
           gate: gateResult.failedStep,
           details: gateResult.details,
         });
+
+        await deps.appendDecision(state.decisionsDir, {
+          ts: new Date().toISOString(),
+          action: "retry",
+          taskId: planTask.id,
+          outcome: `gate ${gateResult.failedStep} failed, strategy: ${gateStrategy}`,
+        });
+
+        if (gateStrategy === "block_and_handoff") {
+          return {
+            success: false,
+            failureCategory: gateCategory,
+            failureDetails: lastFailure,
+          };
+        }
+        if (gateStrategy === "auto_fix_retry") {
+          // Dispatch refactorer with gate failure context
+          stepSequence += 1;
+          const autoFixAgent = getAgent("refactorer");
+          const autoFixInput: AgentInput = {
+            task: planTask,
+            phase,
+            planPath: getSourcesPlanPath(state.sourcesDir),
+            tasksPath: getSourcesTasksPath(state.sourcesDir),
+            previousOutputs,
+            peerProgress: new Map([
+              ["gateFailure", gateResult.details],
+              ["failedStep", gateResult.failedStep ?? "unknown"],
+            ]),
+            previousFailedAttempts: [],
+            failureContext: `Quality gate "${gateResult.failedStep}" failed: ${gateResult.details}`,
+            attempt,
+            maxAttempts,
+          };
+          await deps.runAgent({
+            agent: autoFixAgent,
+            input: autoFixInput,
+            runtime,
+            state,
+            stepSequence,
+            eventBus,
+            model: params.model,
+            streamOutput: params.streamOutput,
+            timeout: params.timeout,
+          });
+        }
+        if (gateStrategy === "escalate_to_em") {
+          await escalateToEM(
+            {
+              state,
+              phase,
+              planTask,
+              runtime,
+              eventBus,
+              failureContext: `Quality gate "${gateResult.failedStep}" failed: ${gateResult.details}`,
+              stepSequence,
+              model: params.model,
+              streamOutput: params.streamOutput,
+              timeout: params.timeout,
+            },
+            deps,
+          );
+        }
         continue;
       }
 
@@ -357,7 +562,7 @@ async function executeTaskFlow(
       taskState.qaCycles = qaCycle;
       stepSequence += 1;
 
-      const qaAgent = getAgent("qa-engineer");
+      const qaAgent = getAgent(reviewer);
       const qaInput: AgentInput = {
         task: planTask,
         phase,
@@ -383,7 +588,35 @@ async function executeTaskFlow(
       });
 
       if (qaOutput.exitCode !== 0) {
-        lastFailure = `qa-engineer failed with code ${qaOutput.exitCode}`;
+        const qaCategory: FailureCategory = "runtime_crash";
+        const qaStrategy = getRecoveryStrategy(qaCategory, attempt);
+        lastFailure = `${reviewer} failed with code ${qaOutput.exitCode}`;
+
+        await deps.appendDecision(state.decisionsDir, {
+          ts: new Date().toISOString(),
+          action: "dispatch_agent",
+          agentId: reviewer,
+          taskId: planTask.id,
+          outcome: `failed (exit ${qaOutput.exitCode}), strategy: ${qaStrategy}`,
+        });
+
+        if (qaStrategy === "escalate_to_em") {
+          await escalateToEM(
+            {
+              state,
+              phase,
+              planTask,
+              runtime,
+              eventBus,
+              failureContext: lastFailure,
+              stepSequence,
+              model: params.model,
+              streamOutput: params.streamOutput,
+              timeout: params.timeout,
+            },
+            deps,
+          );
+        }
         break;
       }
 
@@ -451,7 +684,35 @@ async function executeTaskFlow(
       });
 
       if (fixOutput.exitCode !== 0) {
+        const fixCategory: FailureCategory = "runtime_crash";
+        const fixStrategy = getRecoveryStrategy(fixCategory, attempt);
         lastFailure = `${fixAgentId} failed with code ${fixOutput.exitCode}`;
+
+        await deps.appendDecision(state.decisionsDir, {
+          ts: new Date().toISOString(),
+          action: "dispatch_agent",
+          agentId: fixAgentId,
+          taskId: planTask.id,
+          outcome: `failed (exit ${fixOutput.exitCode}), strategy: ${fixStrategy}`,
+        });
+
+        if (fixStrategy === "escalate_to_em") {
+          await escalateToEM(
+            {
+              state,
+              phase,
+              planTask,
+              runtime,
+              eventBus,
+              failureContext: lastFailure,
+              stepSequence,
+              model: params.model,
+              streamOutput: params.streamOutput,
+              timeout: params.timeout,
+            },
+            deps,
+          );
+        }
         break;
       }
 
@@ -570,9 +831,9 @@ async function executeTaskFlow(
         await deps.writeProgressFile({
           progressDir: state.progressDir,
           taskId: planTask.id,
-          agentId: "software-developer",
+          agentId: implementer,
           content: [
-            `# Agent Progress: software-developer`,
+            `# Agent Progress: ${implementer}`,
             `## Task: ${planTask.id} (${planTask.title})`,
             "",
             `### What Was Done`,
@@ -600,6 +861,15 @@ async function executeTaskFlow(
     taskState.status = "failed";
     taskState.lastError = lastFailure;
     await deps.saveRunState(statePath, state);
+
+    await eventBus.emit({
+      type: "task:failed",
+      ts: new Date().toISOString(),
+      runId: state.runId,
+      taskId: planTask.id,
+      phaseId: phase.id,
+      failureDetails: lastFailure,
+    });
   }
 
   // All attempts exhausted

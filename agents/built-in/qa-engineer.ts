@@ -13,7 +13,7 @@ function buildPrompt(input: AgentInput): string {
       (o) =>
         o.parsed &&
         typeof o.parsed === "object" &&
-        "notes" in (o.parsed as object)
+        "notes" in (o.parsed as object),
     )
     .flatMap((o) => {
       const p = o.parsed as { notes?: unknown };
@@ -89,7 +89,7 @@ export const qaEngineer: AgentDefinition = {
     const parsed = JSON.parse(jsonStr) as { status: string; notes: unknown };
     if (!parsed.status || !Array.isArray(parsed.notes)) {
       throw new Error(
-        `Invalid QA output: expected {status, notes[]} but got: ${jsonStr.slice(0, 200)}`
+        `Invalid QA output: expected {status, notes[]} but got: ${jsonStr.slice(0, 200)}`,
       );
     }
     return parsed as { status: string; notes: string[] };

@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import type {
   RuntimeProvider,
   RuntimeExecuteParams,
@@ -6,17 +5,6 @@ import type {
 } from "../provider";
 import { runProcess } from "../process";
 import { appendLog } from "../log";
-
-async function readOutputFileOrFallback(
-  outputPath: string,
-  fallback: string,
-): Promise<string> {
-  try {
-    return await readFile(outputPath, "utf8");
-  } catch {
-    return fallback;
-  }
-}
 
 /**
  * Extract structured output from Claude Code JSON response.

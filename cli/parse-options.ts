@@ -30,9 +30,9 @@ export function parseCliOptions(argv: string[]): RunnerOptions {
   let retry = 3;
   let timeout = 600000;
   let heartbeatInterval = 30000;
-  let concurrency = 1;
   let noTui = false;
   let detached = false;
+  let _daemon = false;
   let model: string | undefined;
   let skipQualityGates = false;
   let allowDirty = false;
@@ -64,6 +64,11 @@ export function parseCliOptions(argv: string[]): RunnerOptions {
       dryRun = true;
       continue;
     }
+    if (arg === "--_daemon") {
+      _daemon = true;
+      noTui = true;
+      continue;
+    }
 
     // Key-value flags
     const next = argv[i + 1];
@@ -90,8 +95,6 @@ export function parseCliOptions(argv: string[]): RunnerOptions {
       timeout = parseNumber(next, arg);
     } else if (arg === "--heartbeat-interval") {
       heartbeatInterval = parseNumber(next, arg);
-    } else if (arg === "--concurrency") {
-      concurrency = parseNumber(next, arg);
     } else if (arg === "--model") {
       model = next;
     } else if (arg === "--run") {
@@ -115,9 +118,9 @@ export function parseCliOptions(argv: string[]): RunnerOptions {
     retry,
     timeout,
     heartbeatInterval,
-    concurrency,
     noTui,
     detached,
+    _daemon,
     model,
     skipQualityGates,
     allowDirty,

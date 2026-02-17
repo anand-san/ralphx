@@ -56,7 +56,7 @@ describe("TUI store", () => {
     const tui = createInitialTuiState(state);
     expect(tui.runId).toBe("test-run");
     expect(tui.totalTasks).toBe(2);
-    expect(tui.agents).toHaveLength(5);
+    expect(tui.agents).toHaveLength(8);
     expect(tui.tasks).toHaveLength(2);
     expect(tui.logs).toHaveLength(0);
   });
@@ -99,6 +99,25 @@ describe("TUI store", () => {
     expect(task?.status).toBe("passed");
     expect(task?.commit).toBe("abc1234");
     expect(tui.currentTaskIndex).toBe(1);
+  });
+
+  it("updates task status on failure", () => {
+    const state = makeState();
+    let tui = createInitialTuiState(state);
+
+    const event: TaskEvent = {
+      type: "task:failed",
+      ts: "2026-01-01T10:05:00Z",
+      runId: "test-run",
+      taskId: "task-001",
+      phaseId: "phase-1",
+      failureDetails: "QA cycles exhausted",
+    };
+
+    tui = applyEvent(tui, event);
+    const task = tui.tasks.find((t) => t.id === "task-001");
+    expect(task?.status).toBe("failed");
+    expect(task?.error).toBe("QA cycles exhausted");
   });
 
   it("updates status on run completion", () => {
