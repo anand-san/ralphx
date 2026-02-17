@@ -8,12 +8,14 @@
  * and renders a live dashboard.
  */
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { render, Box, Text, useInput, useApp } from "ink";
 import type { RunState } from "../state/types";
 import type { RalphxEvent } from "../monitor/types";
 import type { EventBus } from "../monitor/event-bus";
 import { createInitialTuiState, applyEvent, type TuiState } from "./store";
+
+type ActiveView = "default" | "logs" | "status" | "progress" | "decisions";
 
 interface DashboardProps {
   initialState: RunState;
@@ -131,8 +133,14 @@ function TaskList({ tasks }: { tasks: TuiState["tasks"] }) {
   );
 }
 
-function LogViewer({ logs }: { logs: TuiState["logs"] }) {
-  const visible = logs.slice(-10);
+function LogViewer({
+  logs,
+  expanded,
+}: {
+  logs: TuiState["logs"];
+  expanded?: boolean;
+}) {
+  const visible = logs.slice(expanded ? -30 : -10);
   return (
     <Box flexDirection="column" borderStyle="single" paddingX={1}>
       <Text bold underline>
@@ -150,12 +158,134 @@ function LogViewer({ logs }: { logs: TuiState["logs"] }) {
   );
 }
 
-function CommandBar() {
+function StatusDetail({ state }: { state: TuiState }) {
+  const running = state.agents.filter((a) => a.status === "running").length;
+  const completed = state.agents.filter((a) => a.status === "completed").length;
+  const failed = state.agents.filter((a) => a.status === "failed").length;
+  return (
+    <Box flexDirection="column" borderStyle="single" paddingX={1}>
+      <Text bold underline>
+        STATUS
+      </Text>
+      <Text>
+        Run ID: <Text color="cyan">{state.runId}</Text>
+      </Text>
+      <Text>
+        Runtime: <Text color="cyan">{state.runtime}</Text>
+      </Text>
+      <Text>
+        Status:{" "}
+        <Text
+          color={
+            state.status === "completed"
+              ? "green"
+              : state.status === "blocked"
+                ? "red"
+                : "yellow"
+          }
+        >
+          {state.status.toUpperCase()}
+        </Text>
+      </Text>
+      <Text>Elapsed: {formatElapsed(state.elapsedMs)}</Text>
+      <Text>
+        Agents — running: {running} completed: {completed} failed: {failed}
+      </Text>
+      <Text>
+        Phase: {state.currentPhaseIndex + 1}/{state.totalPhases}
+      </Text>
+      <Text>
+        Tasks completed: {state.currentTaskIndex}/{state.totalTasks}
+      </Text>
+    </Box>
+  );
+}
+
+function ProgressView({ state }: { state: TuiState }) {
+  return (
+    <Box flexDirection="column" borderStyle="single" paddingX={1}>
+      <Text bold underline>
+        PROGRESS
+      </Text>
+      <Text>
+        Phase {state.currentPhaseIndex + 1} of {state.totalPhases}
+      </Text>
+      <Text> </Text>
+      {state.tasks.map((task) => {
+        const icon =
+          task.status === "passed"
+            ? "+"
+            : task.status === "running"
+              ? ">"
+              : task.status === "failed" || task.status === "blocked"
+                ? "x"
+                : "-";
+        const color =
+          task.status === "passed"
+            ? "green"
+            : task.status === "running"
+              ? "yellow"
+              : task.status === "failed" || task.status === "blocked"
+                ? "red"
+                : "gray";
+        return (
+          <Text key={task.id}>
+            <Text color={color}>
+              [{icon}] {task.id}
+            </Text>
+            <Text> {task.title}</Text>
+            {task.commit && <Text color="gray"> ({task.commit})</Text>}
+            {task.error && <Text color="red"> — {task.error}</Text>}
+          </Text>
+        );
+      })}
+    </Box>
+  );
+}
+
+function DecisionsView({
+  decisions,
+}: {
+  decisions: TuiState["recentDecisions"];
+}) {
+  return (
+    <Box flexDirection="column" borderStyle="single" paddingX={1}>
+      <Text bold underline>
+        DECISIONS
+      </Text>
+      {decisions.map((d, i) => (
+        <Box key={i} flexDirection="column">
+          <Text>
+            <Text color="gray">[{d.ts.slice(11, 19)}]</Text>
+            {d.taskId && <Text color="cyan"> {d.taskId}</Text>}
+            <Text bold> {d.action}</Text>
+          </Text>
+          {d.rationale && <Text color="gray"> {d.rationale}</Text>}
+        </Box>
+      ))}
+      {decisions.length === 0 && <Text color="gray"> (no decisions yet)</Text>}
+    </Box>
+  );
+}
+
+function CommandBar({ activeView }: { activeView: ActiveView }) {
+  const items: { key: string; label: string; view: ActiveView }[] = [
+    { key: "l", label: "logs", view: "logs" },
+    { key: "s", label: "status", view: "status" },
+    { key: "p", label: "progress", view: "progress" },
+    { key: "d", label: "decisions", view: "decisions" },
+  ];
   return (
     <Box paddingX={1}>
-      <Text color="gray">
-        [l]logs [s]status [p]progress [d]decisions [q]quit
-      </Text>
+      {items.map((item) => (
+        <Text key={item.key}>
+          <Text color={activeView === item.view ? "cyan" : "gray"}>
+            [{item.key}]{item.label}
+          </Text>
+          <Text> </Text>
+        </Text>
+      ))}
+      <Text color="gray">[q]quit</Text>
     </Box>
   );
 }
@@ -164,6 +294,7 @@ function Dashboard({ initialState, eventBus }: DashboardProps) {
   const [tuiState, setTuiState] = useState<TuiState>(
     createInitialTuiState(initialState),
   );
+  const [activeView, setActiveView] = useState<ActiveView>("default");
   const { exit } = useApp();
 
   useEffect(() => {
@@ -185,21 +316,52 @@ function Dashboard({ initialState, eventBus }: DashboardProps) {
     return () => clearInterval(interval);
   }, []);
 
-  useInput((input, key) => {
+  const viewKeys: Record<string, ActiveView> = {
+    l: "logs",
+    s: "status",
+    p: "progress",
+    d: "decisions",
+  };
+
+  useInput((input) => {
     if (input === "q") {
       exit();
+      return;
+    }
+    const target = viewKeys[input];
+    if (target) {
+      setActiveView((prev) => (prev === target ? "default" : target));
     }
   });
+
+  const renderMainPanel = () => {
+    switch (activeView) {
+      case "logs":
+        return <LogViewer logs={tuiState.logs} expanded />;
+      case "status":
+        return <StatusDetail state={tuiState} />;
+      case "progress":
+        return <ProgressView state={tuiState} />;
+      case "decisions":
+        return <DecisionsView decisions={tuiState.recentDecisions} />;
+      default:
+        return (
+          <>
+            <Box>
+              <AgentList agents={tuiState.agents} />
+              <TaskList tasks={tuiState.tasks} />
+            </Box>
+            <LogViewer logs={tuiState.logs} />
+          </>
+        );
+    }
+  };
 
   return (
     <Box flexDirection="column">
       <StatusBar state={tuiState} />
-      <Box>
-        <AgentList agents={tuiState.agents} />
-        <TaskList tasks={tuiState.tasks} />
-      </Box>
-      <LogViewer logs={tuiState.logs} />
-      <CommandBar />
+      {renderMainPanel()}
+      <CommandBar activeView={activeView} />
     </Box>
   );
 }
