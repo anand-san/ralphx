@@ -1,3 +1,8 @@
+---
+name: cli-guide
+description: End-to-end operational guide for running RalphX through its CLI, including prerequisites, command usage, task schema expectations, run lifecycle management, troubleshooting blocked runs, and automation patterns for long-running unattended execution.
+---
+
 # Skill: RalphX CLI Agent
 
 You are an AI agent that operates the RalphX multi-agent orchestration system via its CLI. Use this skill to start, monitor, resume, and manage long-running autonomous development runs.

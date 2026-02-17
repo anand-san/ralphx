@@ -1,3 +1,8 @@
+---
+name: architecture
+description: Comprehensive architecture and developer reference for RalphX covering system components, execution flow, state model, runtime providers, error handling, observability, and contribution guidance for making safe, consistent codebase changes.
+---
+
 # RalphX Architecture & Developer Guide
 
 This document explains how RalphX works internally so that any AI agent or human contributor can understand the codebase and make changes effectively.

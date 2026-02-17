@@ -1,0 +1,22 @@
+{
+  "idea": "Add user authentication",
+  "generatedAt": "2026-02-17T00:00:00Z",
+  "repo": "my-project",
+  "phases": [
+    {
+      "id": "phase-1",
+      "name": "Auth Setup",
+      "goal": "Set up authentication layer",
+      "exitCriteria": ["Auth middleware works", "Tests pass"],
+      "tasks": [
+        {
+          "id": "task-1-1",
+          "status": "todo",
+          "title": "Create auth middleware",
+          "description": "Implement JWT-based auth middleware for Hono server...",
+          "notes": ["Use existing firebase setup", "Add tests"]
+        }
+      ]
+    }
+  ]
+}
