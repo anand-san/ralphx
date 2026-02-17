@@ -7,6 +7,8 @@ import type {
   AgentRuntimeState,
   RunState,
 } from "../state/types";
+import { mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
 import { buildStepArtifacts } from "../state/artifacts";
 
 export interface AgentRunnerParams {
@@ -35,6 +37,10 @@ export async function runAgent(
     stepSequence: params.stepSequence,
     agent: agent.id,
   });
+
+  // Ensure artifact directories exist before agent execution
+  await mkdir(dirname(artifacts.logPath), { recursive: true });
+  await mkdir(dirname(artifacts.messagePath), { recursive: true });
 
   // Track agent in state.agents[]
   const agentEntry: AgentRuntimeState = {

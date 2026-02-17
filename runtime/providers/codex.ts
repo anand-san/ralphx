@@ -37,14 +37,29 @@ export class CodexProvider implements RuntimeProvider {
     }
     args.push("-");
 
-    const result = await runProcess({
-      cmd: ["codex", ...args],
-      cwd: params.rootDir,
-      stdin: params.prompt,
-      streamOutput: params.streamOutput,
-      onOutput: params.onOutput,
-      timeout: params.timeout,
-    });
+    let result;
+    try {
+      result = await runProcess({
+        cmd: ["codex", ...args],
+        cwd: params.rootDir,
+        stdin: params.prompt,
+        streamOutput: params.streamOutput,
+        onOutput: params.onOutput,
+        timeout: params.timeout,
+      });
+    } catch (error) {
+      const durationMs = Date.now() - startTime;
+      await appendLog(
+        params.logPath,
+        "Codex Execution (crashed)",
+        [
+          `Command: codex ${args.join(" ")}`,
+          `Duration: ${durationMs}ms`,
+          `Error: ${error instanceof Error ? error.message : String(error)}`,
+        ].join("\n"),
+      );
+      throw error;
+    }
 
     const output = await readOutputFileOrFallback(
       params.outputPath,
