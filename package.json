@@ -13,7 +13,8 @@
     "status": "bun cli/index.ts status",
     "list": "bun cli/index.ts list",
     "test": "bun test",
-    "format": "prettier --write '**/*.{ts,tsx,json}'"
+    "format": "prettier --write '**/*.{ts,tsx,json}'",
+    "check-types": "tsc --noEmit"
   },
   "dependencies": {
     "ink": "^4.4.1",

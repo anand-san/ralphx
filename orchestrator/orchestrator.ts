@@ -14,7 +14,11 @@ import { getAgent } from "../agents/registry";
 import { runAgent } from "../agents/agent-runner";
 import { appendDecision } from "./decision-log";
 import { findNextTask, isRunBlocked, isRunFinished } from "./scheduler";
-import { getSourcesPlanPath, getSourcesTasksPath } from "./planner";
+import {
+  getSourcesPlanPath,
+  getSourcesTasksPath,
+  markTaskDoneInSources,
+} from "./planner";
 import { getPhaseState, getTaskState } from "../state/selectors";
 import { saveRunState } from "../state/run-state";
 import { runQualityGates } from "../runtime/quality-gates";
@@ -543,6 +547,7 @@ async function executeTaskFlow(
         taskState.lastCommit = hash;
         taskState.changedFiles = allChanged;
         await deps.saveRunState(statePath, state);
+        await markTaskDoneInSources(state.sourcesDir, planTask.id);
 
         await deps.appendDecision(state.decisionsDir, {
           ts: new Date().toISOString(),
