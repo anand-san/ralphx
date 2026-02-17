@@ -15,7 +15,13 @@ import type { RalphxEvent } from "../monitor/types";
 import type { EventBus } from "../monitor/event-bus";
 import { createInitialTuiState, applyEvent, type TuiState } from "./store";
 
-type ActiveView = "default" | "logs" | "status" | "progress" | "decisions";
+type ActiveView =
+  | "default"
+  | "activity"
+  | "logs"
+  | "status"
+  | "progress"
+  | "decisions";
 
 interface DashboardProps {
   initialState: RunState;
@@ -158,6 +164,35 @@ function LogViewer({
   );
 }
 
+function ActivityView({ activity }: { activity: TuiState["activity"] }) {
+  const visible = activity.slice(-30);
+  return (
+    <Box flexDirection="column" borderStyle="single" paddingX={1}>
+      <Text bold underline>
+        ACTIVITY
+      </Text>
+      {visible.map((entry, i) => (
+        <Text key={i}>
+          <Text color="gray">[{entry.ts.slice(11, 19)}]</Text>
+          <Text
+            color={
+              entry.level === "error"
+                ? "red"
+                : entry.level === "warn"
+                  ? "yellow"
+                  : "white"
+            }
+          >
+            {" "}
+            {entry.message}
+          </Text>
+        </Text>
+      ))}
+      {visible.length === 0 && <Text color="gray"> (no activity yet)</Text>}
+    </Box>
+  );
+}
+
 function StatusDetail({ state }: { state: TuiState }) {
   const running = state.agents.filter((a) => a.status === "running").length;
   const completed = state.agents.filter((a) => a.status === "completed").length;
@@ -270,6 +305,7 @@ function DecisionsView({
 
 function CommandBar({ activeView }: { activeView: ActiveView }) {
   const items: { key: string; label: string; view: ActiveView }[] = [
+    { key: "a", label: "activity", view: "activity" },
     { key: "l", label: "logs", view: "logs" },
     { key: "s", label: "status", view: "status" },
     { key: "p", label: "progress", view: "progress" },
@@ -317,6 +353,7 @@ function Dashboard({ initialState, eventBus }: DashboardProps) {
   }, []);
 
   const viewKeys: Record<string, ActiveView> = {
+    a: "activity",
     l: "logs",
     s: "status",
     p: "progress",
@@ -336,6 +373,8 @@ function Dashboard({ initialState, eventBus }: DashboardProps) {
 
   const renderMainPanel = () => {
     switch (activeView) {
+      case "activity":
+        return <ActivityView activity={tuiState.activity} />;
       case "logs":
         return <LogViewer logs={tuiState.logs} expanded />;
       case "status":

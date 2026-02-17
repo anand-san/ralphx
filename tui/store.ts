@@ -14,6 +14,7 @@ export interface TuiState {
   agents: AgentDisplayState[];
   tasks: TaskDisplayState[];
   logs: LogEntry[];
+  activity: ActivityEntry[];
   recentDecisions: DecisionEntry[];
   selectedAgent: string | null;
 }
@@ -46,6 +47,19 @@ export interface DecisionEntry {
   action: string;
   taskId?: string;
   rationale?: string;
+}
+
+export interface ActivityEntry {
+  ts: string;
+  level: "info" | "warn" | "error";
+  message: string;
+}
+
+function formatDuration(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  if (m > 0) return `${m}m${s % 60}s`;
+  return `${s}s`;
 }
 
 export function createInitialTuiState(state: RunState): TuiState {
@@ -89,6 +103,7 @@ export function createInitialTuiState(state: RunState): TuiState {
       error: t.lastError,
     })),
     logs: [],
+    activity: [],
     recentDecisions: [],
     selectedAgent: null,
   };
@@ -117,12 +132,13 @@ export function applyEvent(tuiState: TuiState, event: RalphxEvent): TuiState {
           },
         ];
       }
-      next.logs = [
-        ...next.logs.slice(-99),
+      next.activity = [
+        ...next.activity.slice(-99),
         {
           ts: event.ts,
-          source: event.agentId,
-          message: event.message ?? `Dispatched for ${event.taskId}`,
+          level: "info",
+          message:
+            event.message ?? `Dispatched ${event.agentId} for ${event.taskId}`,
         },
       ];
       break;
@@ -139,23 +155,38 @@ export function applyEvent(tuiState: TuiState, event: RalphxEvent): TuiState {
       break;
     }
     case "agent:completed": {
+      const ok = event.exitCode === 0;
       next.agents = next.agents.map((a) =>
         a.id === event.agentId
           ? {
               ...a,
-              status: (event.exitCode === 0 ? "completed" : "failed") as
-                | "completed"
-                | "failed",
+              status: (ok ? "completed" : "failed") as "completed" | "failed",
               elapsedMs: event.durationMs,
             }
           : a,
       );
+      next.activity = [
+        ...next.activity.slice(-99),
+        {
+          ts: event.ts,
+          level: ok ? "info" : "error",
+          message: `${event.agentId} ${ok ? "completed" : `failed (exit ${event.exitCode})`}${event.durationMs ? ` in ${formatDuration(event.durationMs)}` : ""}`,
+        },
+      ];
       break;
     }
     case "task:started": {
       next.tasks = next.tasks.map((t) =>
         t.id === event.taskId ? { ...t, status: "running" } : t,
       );
+      next.activity = [
+        ...next.activity.slice(-99),
+        {
+          ts: event.ts,
+          level: "info",
+          message: `Task ${event.taskId} started`,
+        },
+      ];
       break;
     }
     case "task:completed": {
@@ -173,6 +204,14 @@ export function applyEvent(tuiState: TuiState, event: RalphxEvent): TuiState {
         status: "idle" as const,
         taskId: undefined,
       }));
+      next.activity = [
+        ...next.activity.slice(-99),
+        {
+          ts: event.ts,
+          level: "info",
+          message: `Task ${event.taskId} completed${event.commitHash ? ` (${event.commitHash.slice(0, 7)})` : ""}`,
+        },
+      ];
       break;
     }
     case "task:failed": {
@@ -181,6 +220,14 @@ export function applyEvent(tuiState: TuiState, event: RalphxEvent): TuiState {
           ? { ...t, status: "failed", error: event.failureDetails }
           : t,
       );
+      next.activity = [
+        ...next.activity.slice(-99),
+        {
+          ts: event.ts,
+          level: "error",
+          message: `Task ${event.taskId} failed: ${event.failureDetails ?? "unknown"}`,
+        },
+      ];
       break;
     }
     case "task:blocked": {
@@ -189,6 +236,14 @@ export function applyEvent(tuiState: TuiState, event: RalphxEvent): TuiState {
           ? { ...t, status: "blocked", error: event.failureDetails }
           : t,
       );
+      next.activity = [
+        ...next.activity.slice(-99),
+        {
+          ts: event.ts,
+          level: "error",
+          message: `Task ${event.taskId} blocked: ${event.failureDetails ?? "unknown"}`,
+        },
+      ];
       break;
     }
     case "decision:made": {
@@ -201,54 +256,80 @@ export function applyEvent(tuiState: TuiState, event: RalphxEvent): TuiState {
           rationale: event.rationale,
         },
       ];
-      break;
-    }
-    case "quality-gate:running": {
-      next.logs = [
-        ...next.logs.slice(-99),
+      next.activity = [
+        ...next.activity.slice(-99),
         {
           ts: event.ts,
-          source: "quality-gates",
-          message: "Running quality gates...",
+          level: "info",
+          message: `${event.action}${event.taskId ? ` [${event.taskId}]` : ""}${event.rationale ? ` — ${event.rationale}` : ""}`,
         },
       ];
       break;
     }
+    case "quality-gate:running": {
+      next.activity = [
+        ...next.activity.slice(-99),
+        { ts: event.ts, level: "info", message: "Running quality gates..." },
+      ];
+      break;
+    }
     case "quality-gate:passed": {
-      next.logs = [
-        ...next.logs.slice(-99),
-        { ts: event.ts, source: "quality-gates", message: "All gates passed" },
+      next.activity = [
+        ...next.activity.slice(-99),
+        { ts: event.ts, level: "info", message: "Quality gates passed" },
       ];
       break;
     }
     case "quality-gate:failed": {
-      next.logs = [
-        ...next.logs.slice(-99),
+      next.activity = [
+        ...next.activity.slice(-99),
         {
           ts: event.ts,
-          source: "quality-gates",
-          message: `Failed: ${event.gate} — ${event.details}`,
+          level: "error",
+          message: `Quality gate failed: ${event.gate} — ${event.details}`,
         },
       ];
       break;
     }
     case "run:completed": {
       next.status = "completed";
+      next.activity = [
+        ...next.activity.slice(-99),
+        { ts: event.ts, level: "info", message: "Run completed" },
+      ];
       break;
     }
     case "run:blocked": {
       next.status = "blocked";
+      next.activity = [
+        ...next.activity.slice(-99),
+        {
+          ts: event.ts,
+          level: "error",
+          message: `Run blocked${event.details ? `: ${event.details}` : ""}`,
+        },
+      ];
       break;
     }
     case "log:info":
     case "log:warn":
     case "log:error": {
-      next.logs = [
-        ...next.logs.slice(-99),
+      const level =
+        event.type === "log:error"
+          ? "error"
+          : event.type === "log:warn"
+            ? "warn"
+            : "info";
+      const source = event.source ?? "system";
+      next.activity = [
+        ...next.activity.slice(-99),
         {
           ts: event.ts,
-          source: event.source ?? "system",
-          message: event.message,
+          level,
+          message:
+            source !== "orchestrator"
+              ? `[${source}] ${event.message}`
+              : event.message,
         },
       ];
       break;

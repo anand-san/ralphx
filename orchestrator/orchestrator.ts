@@ -131,6 +131,14 @@ export async function executeOrchestrator(
     phaseState.status = "in_progress";
     await deps.saveRunState(statePath, state);
 
+    await eventBus.emit({
+      type: "log:info",
+      ts: new Date().toISOString(),
+      runId: state.runId,
+      source: "orchestrator",
+      message: `Starting phase ${phase.id}: ${phase.name} (${phase.tasks.length} tasks)`,
+    });
+
     for (const planTask of phase.tasks) {
       const taskState = getTaskState(state, phase.id, planTask.id);
       if (taskState.status === "passed") continue;
@@ -205,6 +213,13 @@ export async function executeOrchestrator(
     });
     if (allPassed) {
       phaseState.status = "completed";
+      await eventBus.emit({
+        type: "log:info",
+        ts: new Date().toISOString(),
+        runId: state.runId,
+        source: "orchestrator",
+        message: `Phase ${phase.id} completed`,
+      });
     }
     await deps.saveRunState(statePath, state);
   }
@@ -649,6 +664,16 @@ async function executeTaskFlow(
     taskState.qaCycles = 0;
     await deps.saveRunState(statePath, state);
 
+    if (attempt > 1) {
+      await eventBus.emit({
+        type: "log:warn",
+        ts: new Date().toISOString(),
+        runId: state.runId,
+        source: "orchestrator",
+        message: `Retrying task ${planTask.id}, attempt ${attempt}/${maxAttempts}`,
+      });
+    }
+
     let stepSequence = 0;
     const previousOutputs: AgentOutput[] = [];
     const failedAttempts: FailedAttempt[] = [];
@@ -731,8 +756,18 @@ async function executeTaskFlow(
         outcome: `action=${recommendation.recommendation.action}`,
       });
 
-      // Route by action
       const action = recommendation.recommendation.action;
+
+      await eventBus.emit({
+        type: "decision:made",
+        ts: new Date().toISOString(),
+        runId: state.runId,
+        action: `${usedFallback ? "fallback" : "planner"}: ${action}${recommendation.recommendation.agentId ? ` → ${recommendation.recommendation.agentId}` : ""}`,
+        taskId: planTask.id,
+        rationale: recommendation.recommendation.rationale,
+      });
+
+      // Route by action
 
       if (action === "skip_task") {
         taskState.status = "passed";
@@ -804,6 +839,13 @@ async function executeTaskFlow(
           taskId: planTask.id,
           rationale: lastFailure,
         });
+        await eventBus.emit({
+          type: "log:warn",
+          ts: new Date().toISOString(),
+          runId: state.runId,
+          source: "orchestrator",
+          message: lastFailure,
+        });
         break;
       }
 
@@ -857,6 +899,14 @@ async function executeTaskFlow(
         taskState.lastError = lastFailure;
         taskState.lastExitCode = output.exitCode;
         await deps.saveRunState(statePath, state);
+
+        await eventBus.emit({
+          type: "log:error",
+          ts: new Date().toISOString(),
+          runId: state.runId,
+          source: "orchestrator",
+          message: `${lastFailure}, recovery: ${strategy}`,
+        });
 
         await deps.appendDecision(state.decisionsDir, {
           ts: new Date().toISOString(),
@@ -914,6 +964,14 @@ async function executeTaskFlow(
             agentId,
             taskId: planTask.id,
             outcome: `no_changes`,
+          });
+
+          await eventBus.emit({
+            type: "log:warn",
+            ts: new Date().toISOString(),
+            runId: state.runId,
+            source: "orchestrator",
+            message: `No changes after ${agentId} — re-evaluating`,
           });
           // Let planner re-evaluate
           continue;
@@ -988,6 +1046,14 @@ async function executeTaskFlow(
           action: "qa_verdict",
           taskId: planTask.id,
           verdict: decision.status,
+        });
+
+        await eventBus.emit({
+          type: "log:info",
+          ts: new Date().toISOString(),
+          runId: state.runId,
+          source: "orchestrator",
+          message: `QA verdict for ${planTask.id}: ${decision.status} (cycle ${qaCycles}/${MAX_QA_CYCLES})`,
         });
 
         lastQaVerdict = decision.status;

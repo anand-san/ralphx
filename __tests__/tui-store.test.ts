@@ -78,7 +78,7 @@ describe("TUI store", () => {
     const dev = tui.agents.find((a) => a.id === "software-developer");
     expect(dev?.status).toBe("running");
     expect(dev?.taskId).toBe("task-001");
-    expect(tui.logs).toHaveLength(1);
+    expect(tui.activity).toHaveLength(1);
   });
 
   it("updates task status on completion", () => {
@@ -147,7 +147,7 @@ describe("TUI store", () => {
     };
 
     tui = applyEvent(tui, event);
-    expect(tui.logs).toHaveLength(1);
-    expect(tui.logs[0]?.message).toBe("Hello world");
+    expect(tui.activity).toHaveLength(1);
+    expect(tui.activity[0]?.message).toBe("[test] Hello world");
   });
 });
