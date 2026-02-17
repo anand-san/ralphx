@@ -901,7 +901,7 @@ async function executeTaskFlow(
         outcome: `action=${recommendation.recommendation.action}`,
       });
 
-      const action = recommendation.recommendation.action;
+      let action = recommendation.recommendation.action;
 
       await eventBus.emit({
         type: "decision:made",
@@ -930,10 +930,25 @@ async function executeTaskFlow(
       }
 
       if (action === "retry_task") {
-        shouldRetry = true;
-        lastFailure =
-          recommendation.recommendation.rationale || "Planner requested retry";
-        break;
+        // If no write agent has run in this attempt yet, convert retry_task
+        // to dispatch_agent so we don't waste the attempt without running anyone.
+        const hasWriteRun = agentHistory.some((a) => {
+          try {
+            return getAgent(a).capabilities.includes("write");
+          } catch {
+            return false;
+          }
+        });
+        if (!hasWriteRun && recommendation.recommendation.agentId) {
+          // Treat as dispatch_agent — fall through to the dispatch logic below
+          action = "dispatch_agent";
+        } else {
+          shouldRetry = true;
+          lastFailure =
+            recommendation.recommendation.rationale ||
+            "Planner requested retry";
+          break;
+        }
       }
 
       if (action === "task_complete") {
