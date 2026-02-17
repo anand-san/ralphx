@@ -5,7 +5,7 @@ describe("parseCliOptions", () => {
   it("parses start with defaults", () => {
     const opts = parseCliOptions(["start"]);
     expect(opts.command).toBe("start");
-    expect(opts.runtime).toBe("claude-code");
+    expect(opts.runtime).toBe("codex");
     expect(opts.retry).toBe(3);
     expect(opts.timeout).toBe(600000);
     expect(opts.heartbeatInterval).toBe(30000);

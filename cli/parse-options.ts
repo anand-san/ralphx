@@ -25,7 +25,7 @@ export function parseCliOptions(argv: string[]): RunnerOptions {
 
   let planPath = "PLAN.md";
   let tasksPath = "tasks.json";
-  let runtime: RuntimeName = "claude-code";
+  let runtime: RuntimeName = "codex";
   let teamPath: string | undefined;
   let retry = 3;
   let timeout = 600000;
