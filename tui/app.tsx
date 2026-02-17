@@ -81,7 +81,7 @@ function AgentList({ agents }: { agents: TuiState["agents"] }) {
           <Text color={agent.status === "running" ? "green" : "gray"}>
             {agent.status === "running" ? "*" : " "}
           </Text>
-          <Text> {agent.name.padEnd(5)}</Text>
+          <Text> {agent.name.padEnd(20)}</Text>
           <Text
             color={
               agent.status === "running"
