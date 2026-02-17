@@ -42,6 +42,7 @@ export class CodexProvider implements RuntimeProvider {
       cwd: params.rootDir,
       stdin: params.prompt,
       streamOutput: params.streamOutput,
+      onOutput: params.onOutput,
       timeout: params.timeout,
     });
 

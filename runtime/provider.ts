@@ -9,6 +9,7 @@ export interface RuntimeExecuteParams {
   sandbox?: SandboxMode;
   timeout?: number;
   streamOutput?: boolean;
+  onOutput?: (line: string, stream: "stdout" | "stderr") => void;
   outputSchema?: object;
 }
 

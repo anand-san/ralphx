@@ -5,6 +5,7 @@ export interface RunProcessParams {
   cwd: string;
   stdin?: string;
   streamOutput?: boolean;
+  onOutput?: (line: string, stream: "stdout" | "stderr") => void;
   timeout?: number;
 }
 
@@ -48,10 +49,14 @@ export async function runProcess(
 
   const writeStdout = params.streamOutput
     ? (chunk: string) => process.stdout.write(chunk)
-    : undefined;
+    : params.onOutput
+      ? (chunk: string) => params.onOutput!(chunk, "stdout")
+      : undefined;
   const writeStderr = params.streamOutput
     ? (chunk: string) => process.stderr.write(chunk)
-    : undefined;
+    : params.onOutput
+      ? (chunk: string) => params.onOutput!(chunk, "stderr")
+      : undefined;
 
   // Run with optional timeout
   if (params.timeout && params.timeout > 0) {

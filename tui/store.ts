@@ -127,6 +127,17 @@ export function applyEvent(tuiState: TuiState, event: RalphxEvent): TuiState {
       ];
       break;
     }
+    case "agent:output": {
+      next.logs = [
+        ...next.logs.slice(-99),
+        {
+          ts: event.ts,
+          source: event.agentId,
+          message: event.message ?? "",
+        },
+      ];
+      break;
+    }
     case "agent:completed": {
       next.agents = next.agents.map((a) =>
         a.id === event.agentId

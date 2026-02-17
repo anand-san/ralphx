@@ -63,6 +63,29 @@ export async function runAgent(
     message: `Dispatching ${agent.name} for ${input.task.id}`,
   });
 
+  // When not streaming raw output, forward subprocess lines as agent:output events
+  let lineBuffer = "";
+  const onOutput = params.streamOutput
+    ? undefined
+    : (chunk: string) => {
+        lineBuffer += chunk;
+        const lines = lineBuffer.split("\n");
+        lineBuffer = lines.pop()!;
+        for (const line of lines) {
+          if (line.trim()) {
+            void eventBus.emit({
+              type: "agent:output",
+              ts: new Date().toISOString(),
+              runId: state.runId,
+              agentId: agent.id,
+              taskId: input.task.id,
+              phaseId: input.phase.id,
+              message: line,
+            });
+          }
+        }
+      };
+
   const result = await runtime.execute({
     rootDir: state.runDir.replace(/\/.ralphx\/.*$/, ""),
     prompt,
@@ -72,7 +95,21 @@ export async function runAgent(
     sandbox: agent.defaultSandbox,
     timeout: params.timeout,
     streamOutput: params.streamOutput,
+    onOutput,
   });
+
+  // Flush remaining buffer
+  if (lineBuffer.trim() && onOutput) {
+    void eventBus.emit({
+      type: "agent:output",
+      ts: new Date().toISOString(),
+      runId: state.runId,
+      agentId: agent.id,
+      taskId: input.task.id,
+      phaseId: input.phase.id,
+      message: lineBuffer,
+    });
+  }
 
   // Update agent entry in state.agents[]
   const completedEntry = state.agents.find((a) => a.agentId === agent.id);
