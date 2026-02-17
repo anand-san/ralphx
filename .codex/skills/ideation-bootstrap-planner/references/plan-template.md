@@ -20,10 +20,8 @@
 
 ## Repo Impact Map
 
-- `frontend/`: planned areas and files
-- `server/`: planned areas and files
-- `shared/`: planned areas and files
-- Firebase usage: auth, storage, firestore, functions
+- List directories and files that will be created or modified
+- Note any new dependencies or tooling required
 
 ## Phase Plan
 
@@ -31,7 +29,7 @@
 
 - Goal
 - Scope
-- Implementation details (frontend/server/shared/firebase)
+- Implementation details
 - Dependencies
 - Risks
 - Definition of done

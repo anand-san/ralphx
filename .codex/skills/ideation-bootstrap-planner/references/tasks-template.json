@@ -13,8 +13,8 @@
           "id": "task-1-1",
           "status": "todo",
           "title": "Create auth middleware",
-          "description": "Implement JWT-based auth middleware for Hono server...",
-          "notes": ["Use existing firebase setup", "Add tests"]
+          "description": "Implement auth middleware with validation and error handling.",
+          "notes": ["Add tests for happy and error paths"]
         }
       ]
     }

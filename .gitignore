@@ -1,3 +1,27 @@
 node_modules/
 dist/
 .ralphx/
+
+# Environment files
+.env
+.env.*
+
+# Private keys and certificates
+*.pem
+*.key
+*.cert
+*.p12
+*.pfx
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Registry credentials
+.npmrc
+
+# User-specific AI config
+.claude/settings.local.json

@@ -1,9 +1,9 @@
 ---
 name: ideation-bootstrap-planner
-description: Convert a product/app idea into a repo-specific implementation plan for this stack-template monorepo (Bun workspace with Vite React frontend, Hono backend, shared package, Firebase). Use when a user says they want to build something (for example, "build xyz"), needs bootstrapping guidance, or asks for phased execution planning. Ask clarifying questions only when required, perform focused research when the domain or integrations are unclear, and generate PLAN.md plus tasks.json mapped to this repository structure.
+description: Convert a product/app idea into a repo-specific implementation plan. Use when a user says they want to build something (for example, "build xyz"), needs bootstrapping guidance, or asks for phased execution planning. Ask clarifying questions only when required, perform focused research when the domain or integrations are unclear, and generate PLAN.md plus tasks.json mapped to the target repository structure.
 ---
 
-Turn a raw idea into a practical execution plan for this repository.
+Turn a raw idea into a practical execution plan for the target repository.
 
 ## Core Outcome
 
@@ -12,7 +12,7 @@ Produce two files at project root:
 - `docs/ideation/PLAN.md`: phase-by-phase implementation plan.
 - `docs/ideation/tasks.json`: machine-readable task list grouped by phase.
 
-Use this repository's architecture and commands, not generic templates.
+Use the target repository's architecture and commands, not generic templates.
 
 ## Required Workflow
 
@@ -30,17 +30,14 @@ Use this repository's architecture and commands, not generic templates.
 
 3. Load repository context
 
-- Read `AGENTS.md`, `README.md`, root `package.json`, `frontend/package.json`, and `server/package.json`.
-- Align planning to:
-  - `frontend/` for UI, pages, state, API clients, and tests.
-  - `server/` for Hono routes, middleware, services, and tests.
-  - `shared/` for shared types and config.
+- Read available docs (`README.md`, `CLAUDE.md`, `AGENTS.md`, etc.), root config files, and package manifests.
+- Identify the project's directory structure, tech stack, and conventions.
+- Align planning to the repository's actual layout and tooling.
 
 4. Perform focused research when needed
 
 - Do local repo research first.
 - Do web research if the idea depends on unfamiliar libraries, third-party APIs, security/compliance requirements, or complex domain rules.
-  - Use context7 MCP server to read docs of frameworks if needed
 - Capture findings as short bullets with links inside `PLAN.md` under `Research Notes`.
 - Distinguish confirmed facts from assumptions.
 
@@ -49,13 +46,13 @@ Use this repository's architecture and commands, not generic templates.
 - Break work into ordered phases where each phase can be validated.
 - Keep phases outcome-driven.
 - Define dependencies and risk per phase.
-- Ensure each phase maps to concrete folders/files in this repo.
+- Ensure each phase maps to concrete folders/files in the repo.
 
 6. Generate `PLAN.md`
 
 - Use `references/plan-template.md`.
 - Keep language specific and implementation-focused.
-- Include architecture decisions for frontend, server, shared, and Firebase usage.
+- Include architecture decisions relevant to the project's stack.
 - Include testing, observability, and rollout strategy.
 - Include testing tasks for both happy path and key error paths.
 
@@ -70,7 +67,7 @@ Use this repository's architecture and commands, not generic templates.
 
 - Verify `PLAN.md` and `tasks.json` are consistent and phase names match exactly.
 - Ensure no phase is missing test tasks.
-- Ensure commands use Bun and existing workspace scripts.
+- Ensure commands use the project's existing tooling and scripts.
 - Ensure unknowns are captured in `Open Questions` rather than hidden.
 
 ## Planning Rules
@@ -112,9 +109,9 @@ Task object example:
 {
   "id": "task-001",
   "status": "todo",
-  "title": "Create todo route",
-  "description": "Add Hono endpoints for todo CRUD with validation and error handling.",
-  "notes": ["Endpoints should be under /api/"]
+  "title": "Create auth middleware",
+  "description": "Implement auth middleware with validation and error handling.",
+  "notes": ["Add tests for happy and error paths"]
 }
 ```
 
