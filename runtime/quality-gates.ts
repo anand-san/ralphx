@@ -13,26 +13,21 @@ export interface QualityGateResult {
   details: string;
 }
 
-/**
- * Default quality gate steps. Override by passing custom steps to runQualityGates.
- * Each step runs sequentially; execution stops on first failure.
- */
-export function defaultQualityGateSteps(rootDir: string): QualityGateStep[] {
-  return [
-    { name: "format", cmd: ["bun", "run", "format"], cwd: rootDir },
-    { name: "lint", cmd: ["bun", "run", "lint"], cwd: rootDir },
-    { name: "check-types", cmd: ["bun", "run", "check-types"], cwd: rootDir },
-    { name: "test", cmd: ["bun", "run", "test"], cwd: rootDir },
-  ];
-}
-
 export async function runQualityGates(params: {
   rootDir: string;
   logPath: string;
   streamOutput: boolean;
   steps?: QualityGateStep[];
 }): Promise<QualityGateResult> {
-  const steps = params.steps ?? defaultQualityGateSteps(params.rootDir);
+  const steps = params.steps ?? [];
+
+  await appendLog(
+    params.logPath,
+    "Quality Gate Discovery",
+    steps.length > 0
+      ? `Running ${steps.length} gate(s): ${steps.map((s) => s.name).join(", ")}`
+      : "No quality gate steps configured; skipping gates.",
+  );
 
   for (const step of steps) {
     const result = await runProcess({

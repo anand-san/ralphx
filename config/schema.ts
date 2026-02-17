@@ -132,6 +132,11 @@ const phaseRuntimeStateSchema = z.object({
   status: z.enum(["pending", "in_progress", "completed", "blocked"]),
 });
 
+const qualityGateStepConfigSchema = z.object({
+  name: z.string(),
+  cmd: z.array(z.string()),
+});
+
 export const runStateSchema = z.object({
   schemaVersion: z.literal(2),
   runId: z.string(),
@@ -153,4 +158,5 @@ export const runStateSchema = z.object({
   phases: z.array(phaseRuntimeStateSchema),
   tasks: z.array(taskRuntimeStateSchema),
   agents: z.array(agentRuntimeStateSchema),
+  qualityGateSteps: z.array(qualityGateStepConfigSchema).optional(),
 });

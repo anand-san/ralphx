@@ -27,7 +27,9 @@ import {
 import { getPhaseState, getTaskState } from "../state/selectors";
 import { saveRunState } from "../state/run-state";
 import { runQualityGates } from "../runtime/quality-gates";
+import type { QualityGateStep } from "../runtime/quality-gates";
 import { buildStepArtifacts } from "../state/artifacts";
+import type { DiscoveredSteps } from "../agents/mini/quality-gate-discoverer";
 import {
   parseVerifierDecision,
   parseConventionalCommit,
@@ -111,6 +113,104 @@ const defaultDeps: OrchestratorDependencies = {
   consultPlanner,
 };
 
+async function discoverAndCacheQualityGateSteps(
+  params: OrchestratorParams,
+  deps: OrchestratorDependencies,
+): Promise<void> {
+  const { rootDir, state, statePath, runtime, eventBus } = params;
+
+  if (!hasAgent("quality-gate-discoverer")) return;
+
+  const agent = getAgent("quality-gate-discoverer");
+
+  await eventBus.emit({
+    type: "log:info",
+    ts: new Date().toISOString(),
+    runId: state.runId,
+    source: "orchestrator",
+    message: "Discovering quality gate steps via agent...",
+  });
+
+  const logPath = `${state.logDir}/quality-gate-discovery.log`;
+  const outputPath = `${state.messageDir}/quality-gate-discovery.md`;
+
+  // Build a minimal AgentInput for the discoverer (it ignores task-specific fields)
+  const dummyInput: AgentInput = {
+    task: {
+      id: "_discovery",
+      status: "todo",
+      title: "Quality Gate Discovery",
+      description: "",
+      notes: [],
+    },
+    phase: {
+      id: "_discovery",
+      name: "Setup",
+      goal: "",
+      exitCriteria: [],
+      tasks: [],
+    },
+    planPath: "",
+    tasksPath: "",
+    previousOutputs: [],
+    peerProgress: new Map(),
+    previousFailedAttempts: [],
+    attempt: 1,
+    maxAttempts: 1,
+  };
+
+  const prompt = agent.buildPrompt(dummyInput);
+
+  try {
+    const result = await runtime.execute({
+      rootDir,
+      prompt,
+      logPath,
+      outputPath,
+      model: params.model,
+      sandbox: agent.defaultSandbox,
+      timeout: 60_000,
+      streamOutput: false,
+    });
+
+    let steps: DiscoveredSteps["steps"] = [];
+    if (agent.parseOutput && result.output) {
+      try {
+        const parsed = agent.parseOutput(result.output) as DiscoveredSteps;
+        steps = parsed.steps ?? [];
+      } catch {
+        // Parse failure → no gates
+      }
+    }
+
+    state.qualityGateSteps = steps.map((s) => ({ name: s.name, cmd: s.cmd }));
+    await deps.saveRunState(statePath, state);
+
+    await eventBus.emit({
+      type: "log:info",
+      ts: new Date().toISOString(),
+      runId: state.runId,
+      source: "orchestrator",
+      message:
+        steps.length > 0
+          ? `Discovered ${steps.length} quality gate(s): ${steps.map((s) => s.name).join(", ")}`
+          : "No quality gates discovered for this repo.",
+    });
+  } catch (err) {
+    // Discovery failure is non-fatal — gates will be empty
+    state.qualityGateSteps = [];
+    await deps.saveRunState(statePath, state);
+
+    await eventBus.emit({
+      type: "log:warn",
+      ts: new Date().toISOString(),
+      runId: state.runId,
+      source: "orchestrator",
+      message: `Quality gate discovery failed: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
+}
+
 export async function executeOrchestrator(
   params: OrchestratorParams,
   deps: OrchestratorDependencies = defaultDeps,
@@ -123,6 +223,11 @@ export async function executeOrchestrator(
     runId: state.runId,
     details: `Starting run with ${document.phases.length} phases`,
   });
+
+  // Discover quality gate steps once per run (cached in state)
+  if (!params.skipQualityGates && state.qualityGateSteps === undefined) {
+    await discoverAndCacheQualityGateSteps(params, deps);
+  }
 
   for (const phase of document.phases) {
     const phaseState = getPhaseState(state, phase.id);
@@ -352,10 +457,19 @@ export async function runQualityGateCheck(
     runId: params.state.runId,
   });
 
+  // Convert cached step configs into full QualityGateStep objects with cwd
+  const cachedSteps: QualityGateStep[] | undefined =
+    params.state.qualityGateSteps?.map((s) => ({
+      name: s.name,
+      cmd: s.cmd,
+      cwd: params.rootDir,
+    }));
+
   const gateResult = await deps.runQualityGates({
     rootDir: params.rootDir,
     logPath: artifacts.logPath,
     streamOutput: params.streamOutput,
+    steps: cachedSteps,
   });
 
   if (!gateResult.passed) {

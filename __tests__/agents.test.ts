@@ -74,13 +74,14 @@ describe("registerDefaultAgents", () => {
     expect(ids).toContain("bug-fixer");
     expect(ids).toContain("software-architect");
     expect(ids).toContain("doc-updater");
-    expect(agents.length).toBe(12);
+    expect(ids).toContain("quality-gate-discoverer");
+    expect(agents.length).toBe(13);
   });
 
   it("is idempotent", () => {
     registerDefaultAgents();
     registerDefaultAgents(); // Should not throw
-    expect(listAgents().length).toBe(12);
+    expect(listAgents().length).toBe(13);
   });
 });
 

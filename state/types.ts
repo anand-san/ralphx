@@ -84,6 +84,11 @@ export interface TaskRuntimeState {
   qaCycles: number;
 }
 
+export interface QualityGateStepConfig {
+  name: string;
+  cmd: string[];
+}
+
 export interface RunState {
   schemaVersion: 2;
   runId: string;
@@ -107,6 +112,8 @@ export interface RunState {
   phases: PhaseRuntimeState[];
   tasks: TaskRuntimeState[];
   agents: AgentRuntimeState[];
+  // Cached quality gate steps (discovered once per run by agent)
+  qualityGateSteps?: QualityGateStepConfig[];
 }
 
 // ── Process types ──

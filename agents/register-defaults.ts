@@ -11,6 +11,7 @@ import { codeReviewer } from "./mini/code-reviewer";
 import { refactorer } from "./mini/refactorer";
 import { bugFixer } from "./mini/bug-fixer";
 import { docUpdater } from "./mini/doc-updater";
+import { qualityGateDiscoverer } from "./mini/quality-gate-discoverer";
 
 const defaultAgents = [
   softwareDeveloper,
@@ -25,6 +26,7 @@ const defaultAgents = [
   refactorer,
   bugFixer,
   docUpdater,
+  qualityGateDiscoverer,
 ];
 
 export function registerDefaultAgents(): void {
