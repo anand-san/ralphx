@@ -6,6 +6,7 @@ describe("parseCliOptions", () => {
     const opts = parseCliOptions(["start"]);
     expect(opts.command).toBe("start");
     expect(opts.runtime).toBe("codex");
+    expect(opts.runtimeExplicit).toBe(false);
     expect(opts.retry).toBe(3);
     expect(opts.timeout).toBe(600000);
     expect(opts.heartbeatInterval).toBe(30000);
@@ -43,6 +44,7 @@ describe("parseCliOptions", () => {
     expect(opts.planPath).toBe("my-plan.md");
     expect(opts.tasksPath).toBe("my-tasks.json");
     expect(opts.runtime).toBe("codex");
+    expect(opts.runtimeExplicit).toBe(true);
     expect(opts.teamPath).toBe("./team.json");
     expect(opts.retry).toBe(5);
     expect(opts.timeout).toBe(300000);

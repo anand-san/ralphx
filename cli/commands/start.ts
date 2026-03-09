@@ -81,6 +81,11 @@ export async function startCommand(options: RunnerOptions): Promise<void> {
   const persistedTeamPath = teamPath
     ? getSourcesTeamConfigPath(paths.sourcesDir)
     : undefined;
+  const teamConfig = await loadOptionalTeamConfig(teamPath);
+  const effectiveRuntime =
+    !options.runtimeExplicit && teamConfig?.defaultRuntime
+      ? teamConfig.defaultRuntime
+      : options.runtime;
 
   const document = await loadTasksDocument(tasksPath);
 
@@ -124,7 +129,7 @@ export async function startCommand(options: RunnerOptions): Promise<void> {
     runId,
     branch,
     retryLimit: options.retry,
-    defaultRuntime: options.runtime,
+    defaultRuntime: effectiveRuntime,
     teamConfigPath: persistedTeamPath,
     paths,
     tasksDocument: document,
@@ -148,19 +153,16 @@ export async function startCommand(options: RunnerOptions): Promise<void> {
 
   // Select runtime
   const runtime =
-    options.runtime === "codex"
+    effectiveRuntime === "codex"
       ? new CodexProvider()
       : new ClaudeCodeProvider();
 
   const available = await runtime.isAvailable();
   if (!available) {
     throw new Error(
-      `Runtime "${options.runtime}" is not available. Ensure the CLI is installed and in PATH.`,
+      `Runtime "${effectiveRuntime}" is not available. Ensure the CLI is installed and in PATH.`,
     );
   }
-
-  // Load team config
-  const teamConfig = await loadOptionalTeamConfig(teamPath);
 
   // Monitoring
   const heartbeat = new HeartbeatMonitor({
@@ -191,7 +193,7 @@ export async function startCommand(options: RunnerOptions): Promise<void> {
     renderTui({ initialState: state, eventBus });
   } else if (!options._daemon) {
     console.log(`RalphX run ${runId} started on branch ${branch}`);
-    console.log(`Runtime: ${options.runtime}`);
+    console.log(`Runtime: ${effectiveRuntime}`);
     console.log(`Retry limit: ${options.retry}`);
   }
 

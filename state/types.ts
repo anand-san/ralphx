@@ -204,6 +204,7 @@ export interface RunnerOptions {
   planPath: string;
   tasksPath: string;
   runtime: RuntimeName;
+  runtimeExplicit: boolean;
   teamPath?: string;
   retry: number;
   timeout: number;

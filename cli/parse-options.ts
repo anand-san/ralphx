@@ -26,6 +26,7 @@ export function parseCliOptions(argv: string[]): RunnerOptions {
   let planPath = "PLAN.md";
   let tasksPath = "tasks.json";
   let runtime: RuntimeName = "codex";
+  let runtimeExplicit = false;
   let teamPath: string | undefined;
   let retry = 3;
   let timeout = 600000;
@@ -87,6 +88,7 @@ export function parseCliOptions(argv: string[]): RunnerOptions {
         );
       }
       runtime = next;
+      runtimeExplicit = true;
     } else if (arg === "--team") {
       teamPath = next;
     } else if (arg === "--retry") {
@@ -114,6 +116,7 @@ export function parseCliOptions(argv: string[]): RunnerOptions {
     planPath,
     tasksPath,
     runtime,
+    runtimeExplicit,
     teamPath,
     retry,
     timeout,
