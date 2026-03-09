@@ -2,8 +2,11 @@ import { resolve, join } from "node:path";
 import { writeFile, open, readFile, mkdir } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import type { RunnerOptions, TasksDocument } from "../../state/types";
-import type { TeamConfig } from "../../config/types";
-import { tasksDocumentSchema, teamConfigSchema } from "../../config/schema";
+import { tasksDocumentSchema } from "../../config/schema";
+import {
+  getSourcesTeamConfigPath,
+  loadOptionalTeamConfig,
+} from "../../config/loader";
 import {
   buildRunId,
   buildRunPaths,
@@ -75,6 +78,9 @@ export async function startCommand(options: RunnerOptions): Promise<void> {
   const teamPath = options.teamPath ? resolve(options.teamPath) : undefined;
   const runId = options.runId ?? buildRunId();
   const paths = buildRunPaths(rootDir, runId);
+  const persistedTeamPath = teamPath
+    ? getSourcesTeamConfigPath(paths.sourcesDir)
+    : undefined;
 
   const document = await loadTasksDocument(tasksPath);
 
@@ -119,7 +125,7 @@ export async function startCommand(options: RunnerOptions): Promise<void> {
     branch,
     retryLimit: options.retry,
     defaultRuntime: options.runtime,
-    teamConfigPath: teamPath,
+    teamConfigPath: persistedTeamPath,
     paths,
     tasksDocument: document,
   });
@@ -154,11 +160,7 @@ export async function startCommand(options: RunnerOptions): Promise<void> {
   }
 
   // Load team config
-  let teamConfig: TeamConfig | undefined;
-  if (teamPath) {
-    const teamRaw = await readFile(teamPath, "utf8");
-    teamConfig = teamConfigSchema.parse(JSON.parse(teamRaw) as unknown);
-  }
+  const teamConfig = await loadOptionalTeamConfig(teamPath);
 
   // Monitoring
   const heartbeat = new HeartbeatMonitor({
