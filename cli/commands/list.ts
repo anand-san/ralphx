@@ -1,5 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
-import { resolve, join } from "node:path";
+import { resolve } from "node:path";
 import type { RunnerOptions, RunState } from "../../state/types";
 import { getRalphxDir } from "../../state/run-state";
 

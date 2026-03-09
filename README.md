@@ -43,21 +43,21 @@ bun cli/index.ts <command> [options]
 
 ### Options
 
-| Flag                        | Default             | Description                                                                                     |
-| --------------------------- | ------------------- | ----------------------------------------------------------------------------------------------- |
-| `--plan <path>`             | `PLAN.md`           | Path to the plan markdown file                                                                  |
-| `--tasks <path>`            | `tasks.json`        | Path to the tasks JSON file                                                                     |
-| `--runtime <name>`          | `codex`             | Runtime CLI to use (`codex` or `claude-code`)                                                   |
+| Flag                        | Default             | Description                                                                                                |
+| --------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `--plan <path>`             | `PLAN.md`           | Path to the plan markdown file                                                                             |
+| `--tasks <path>`            | `tasks.json`        | Path to the tasks JSON file                                                                                |
+| `--runtime <name>`          | `codex`             | Runtime CLI to use (`codex` or `claude-code`)                                                              |
 | `--team <path>`             | _(none)_            | Path to team config JSON. When it sets `defaultRuntime`, that runtime is used unless `--runtime` is passed |
-| `--model <name>`            | _(runtime default)_ | Model to pass to the runtime CLI. When omitted, the runtime CLI uses its own configured default |
-| `--retry <n>`               | `3`                 | Number of retries per task (total attempts = retry + 1)                                         |
-| `--timeout <ms>`            | `600000`            | Timeout per agent invocation (10 minutes)                                                       |
-| `--heartbeat-interval <ms>` | `30000`             | Heartbeat check interval (30 seconds)                                                           |
-| `--no-tui`                  | `false`             | Disable the TUI, use plain stdout                                                               |
-| `--detached`                | `false`             | Run as a background daemon                                                                      |
-| `--skip-quality-gates`      | `false`             | Skip format/lint/types/test checks                                                              |
-| `--allow-dirty`             | `false`             | Allow starting with uncommitted changes                                                         |
-| `--dry-run`                 | `false`             | Validate inputs and print plan without executing                                                |
+| `--model <name>`            | _(runtime default)_ | Model to pass to the runtime CLI. When omitted, the runtime CLI uses its own configured default            |
+| `--retry <n>`               | `3`                 | Number of retries per task (total attempts = retry + 1)                                                    |
+| `--timeout <ms>`            | `600000`            | Timeout per agent invocation (10 minutes)                                                                  |
+| `--heartbeat-interval <ms>` | `30000`             | Heartbeat check interval (30 seconds)                                                                      |
+| `--no-tui`                  | `false`             | Disable the TUI, use plain stdout                                                                          |
+| `--detached`                | `false`             | Run as a background daemon                                                                                 |
+| `--skip-quality-gates`      | `false`             | Skip format/lint/types/test checks                                                                         |
+| `--allow-dirty`             | `false`             | Allow starting with uncommitted changes                                                                    |
+| `--dry-run`                 | `false`             | Validate inputs and print plan without executing                                                           |
 
 ## Input Files
 
@@ -185,6 +185,8 @@ Parent prints the run ID and daemon log path immediately. The child PID is writt
 
 ```bash
 bun install
+bun run format:check
+bun run lint
 bun test                # Run tests
 bun run check-types     # TypeScript type checking
 bun run format          # Prettier formatting

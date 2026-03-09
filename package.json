@@ -13,7 +13,9 @@
     "status": "bun cli/index.ts status",
     "list": "bun cli/index.ts list",
     "test": "bun test",
-    "format": "prettier --write '**/*.{ts,tsx,json}'",
+    "format": "prettier --write '**/*.{ts,tsx,json,md,yml,yaml}'",
+    "format:check": "prettier --check '**/*.{ts,tsx,json,md,yml,yaml}'",
+    "lint": "eslint .",
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
@@ -22,10 +24,14 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.21.0",
     "@types/bun": "latest",
     "@types/node": "latest",
     "@types/react": "^18.3.0",
+    "eslint": "^9.21.0",
+    "globals": "^16.0.0",
     "prettier": "^3.0.0",
+    "typescript-eslint": "^8.25.0",
     "typescript": "^5.0.0"
   }
 }

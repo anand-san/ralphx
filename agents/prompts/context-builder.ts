@@ -1,9 +1,4 @@
-import type {
-  AgentInput,
-  FailedAttempt,
-  PlanPhase,
-  PlanTask,
-} from "../../state/types";
+import type { AgentInput, FailedAttempt } from "../../state/types";
 
 export function buildContextBlock(input: AgentInput): string {
   const notes =
