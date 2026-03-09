@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { EventBus } from "../monitor/event-bus";
 import { HeartbeatMonitor } from "../monitor/heartbeat";
-import type { RalphxEvent } from "../monitor/types";
+import type { ProcessEvent, RalphxEvent } from "../monitor/types";
 import type { RunState } from "../state/types";
 
 function makeState(): RunState {
@@ -72,12 +72,11 @@ describe("HeartbeatMonitor", () => {
     monitor.stop();
 
     const timeouts = events.filter(
-      (event): event is Extract<RalphxEvent, { type: "process:timeout" }> =>
-        event.type === "process:timeout",
+      (event): event is ProcessEvent => event.type === "process:timeout",
     );
 
     expect(timeouts).toHaveLength(2);
-    expect(timeouts.map((event) => event.taskId).sort()).toEqual([
+    expect(timeouts.map((event) => event.taskId ?? "").sort()).toEqual([
       "task-1",
       "task-2",
     ]);

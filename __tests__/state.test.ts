@@ -12,7 +12,6 @@ import {
 } from "../state/run-state";
 import {
   getTaskState,
-  getPhaseState,
   getPendingTasks,
   isPhaseComplete,
 } from "../state/selectors";

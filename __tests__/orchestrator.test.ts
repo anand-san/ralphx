@@ -2,25 +2,18 @@ import { describe, expect, it, beforeEach, mock } from "bun:test";
 import {
   executeOrchestrator,
   resolveAgentIds,
-  runQualityGateCheck,
-  commitChanges,
   detectAgentCycle,
   buildFallbackRecommendation,
   type OrchestratorDependencies,
-  type OrchestratorParams,
 } from "../orchestrator/orchestrator";
-import type { PlannerConsultParams } from "../orchestrator/planner";
 import { EventBus } from "../monitor/event-bus";
 import type {
   AgentOutput,
-  PlanPhase,
-  PlanTask,
   PlannerRecommendation,
   RunState,
   TasksDocument,
 } from "../state/types";
 import { WRITE_AGENT_IDS } from "../state/types";
-import type { AgentDefinition } from "../agents/base-agent";
 import { registerAgent, clearRegistry, hasAgent } from "../agents/registry";
 import type { RuntimeProvider } from "../runtime/provider";
 

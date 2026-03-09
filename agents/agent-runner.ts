@@ -72,7 +72,9 @@ export async function runAgent(
   });
 
   const getTrackedAgent = (): AgentRuntimeState | undefined =>
-    state.agents.find((a) => a.agentId === agent.id && a.taskId === input.task.id);
+    state.agents.find(
+      (a) => a.agentId === agent.id && a.taskId === input.task.id,
+    );
 
   const touchHeartbeat = (): void => {
     const runningEntry = getTrackedAgent();

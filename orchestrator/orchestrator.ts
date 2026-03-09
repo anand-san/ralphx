@@ -1067,7 +1067,6 @@ async function executeTaskFlow(
           timeout: params.timeout,
         });
       } catch (runError) {
-        const category: FailureCategory = "runtime_crash";
         lastFailure = `${agentId} crashed: ${runError instanceof Error ? runError.message : String(runError)}`;
 
         // Guide retry agents to discover partial work via git
@@ -1170,7 +1169,6 @@ async function executeTaskFlow(
         const writeChangedFiles = await deps.listChangedFiles(rootDir);
 
         if (writeChangedFiles.length === 0) {
-          const category: FailureCategory = "agent_no_changes";
           lastFailure = `No repository changes detected after ${agentId}`;
           taskState.lastError = lastFailure;
           await deps.saveRunState(statePath, state);

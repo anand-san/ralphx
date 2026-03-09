@@ -1,12 +1,3 @@
-import type { AgentInput, PlanTask } from "../../state/types";
-import {
-  buildContextBlock,
-  buildFailedAttemptsBlock,
-  buildPeerProgressBlock,
-  buildPreviousOutputsBlock,
-  truncateText,
-} from "./context-builder";
-
 // ── Commit message prompt ──
 
 export function buildCommitMessagePrompt(params: {

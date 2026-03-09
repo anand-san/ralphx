@@ -5,7 +5,7 @@ import {
   isRunFinished,
 } from "../orchestrator/scheduler";
 import { buildRunPaths, createInitialRunState } from "../state/run-state";
-import type { PlanPhase, TasksDocument } from "../state/types";
+import type { TasksDocument } from "../state/types";
 
 function makeDocument(): TasksDocument {
   return {
