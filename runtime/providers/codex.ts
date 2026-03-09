@@ -45,6 +45,8 @@ export class CodexProvider implements RuntimeProvider {
         stdin: params.prompt,
         streamOutput: params.streamOutput,
         onOutput: params.onOutput,
+        onSpawn: params.onSpawn,
+        onHeartbeat: params.onHeartbeat,
         timeout: params.timeout,
       });
     } catch (error) {
@@ -89,6 +91,7 @@ export class CodexProvider implements RuntimeProvider {
     );
 
     return {
+      pid: result.pid,
       exitCode: result.exitCode,
       stdout: result.stdout,
       stderr: result.stderr,

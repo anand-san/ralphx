@@ -71,6 +71,16 @@ export async function runAgent(
     message: `Dispatching ${agent.name} for ${input.task.id}`,
   });
 
+  const getTrackedAgent = (): AgentRuntimeState | undefined =>
+    state.agents.find((a) => a.agentId === agent.id && a.taskId === input.task.id);
+
+  const touchHeartbeat = (): void => {
+    const runningEntry = getTrackedAgent();
+    if (runningEntry) {
+      runningEntry.lastHeartbeat = new Date().toISOString();
+    }
+  };
+
   // When not streaming raw output, forward subprocess lines as agent:output events
   let lineBuffer = "";
   const onOutput = params.streamOutput
@@ -104,6 +114,24 @@ export async function runAgent(
     timeout: params.timeout,
     streamOutput: params.streamOutput,
     onOutput,
+    onSpawn: (pid) => {
+      const runningEntry = getTrackedAgent();
+      if (runningEntry) {
+        runningEntry.pid = pid;
+      }
+      touchHeartbeat();
+      void eventBus.emit({
+        type: "process:registered",
+        ts: new Date().toISOString(),
+        runId: state.runId,
+        agentId: agent.id,
+        taskId: input.task.id,
+        pid,
+      });
+    },
+    onHeartbeat: () => {
+      touchHeartbeat();
+    },
   });
 
   // Flush remaining buffer
@@ -127,6 +155,8 @@ export async function runAgent(
     completedEntry.status = result.exitCode === 0 ? "completed" : "failed";
     completedEntry.completedAt = new Date().toISOString();
     completedEntry.exitCode = result.exitCode;
+    completedEntry.pid = result.pid;
+    completedEntry.lastHeartbeat = new Date().toISOString();
   }
 
   // Emit completion event
@@ -137,6 +167,17 @@ export async function runAgent(
     agentId: agent.id,
     taskId: input.task.id,
     phaseId: input.phase.id,
+    exitCode: result.exitCode,
+    durationMs: result.durationMs,
+  });
+
+  await eventBus.emit({
+    type: result.exitCode === 0 ? "process:completed" : "process:failed",
+    ts: new Date().toISOString(),
+    runId: state.runId,
+    agentId: agent.id,
+    taskId: input.task.id,
+    pid: result.pid,
     exitCode: result.exitCode,
     durationMs: result.durationMs,
   });

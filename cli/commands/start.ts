@@ -1,10 +1,12 @@
 import { resolve, join } from "node:path";
-import { writeFile, open } from "node:fs/promises";
+import { writeFile, open, readFile, mkdir } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import type { RunnerOptions, TasksDocument } from "../../state/types";
-import type { TeamConfig } from "../../config/types";
-import { tasksDocumentSchema, teamConfigSchema } from "../../config/schema";
-import { readFile } from "node:fs/promises";
+import { tasksDocumentSchema } from "../../config/schema";
+import {
+  getSourcesTeamConfigPath,
+  loadOptionalTeamConfig,
+} from "../../config/loader";
 import {
   buildRunId,
   buildRunPaths,
@@ -15,10 +17,8 @@ import {
 } from "../../state/run-state";
 import {
   createRunBranch,
-  currentBranch,
   ensureCleanWorkingTree,
   ensureGitRepo,
-  hasChanges,
 } from "../../git/operations";
 import { getEventBus } from "../../monitor/event-bus";
 import { registerDefaultAgents } from "../../agents/register-defaults";
@@ -44,15 +44,50 @@ function printDryRun(document: TasksDocument): void {
   }
 }
 
+function buildDaemonArgs(runId: string): string[] {
+  const args: string[] = [];
+  const rawArgs = process.argv.slice(1);
+
+  for (let i = 0; i < rawArgs.length; i += 1) {
+    const arg = rawArgs[i]!;
+    if (arg === "--detached" || arg === "--_daemon") {
+      continue;
+    }
+    if (arg === "--run") {
+      i += 1;
+      continue;
+    }
+    args.push(arg);
+  }
+
+  args.push("--_daemon", "--run", runId);
+  return args;
+}
+
 export async function startCommand(options: RunnerOptions): Promise<void> {
   const rootDir = process.cwd();
+
+  if (options.runId && !options._daemon) {
+    throw new Error("--run is reserved for internal daemon startup.");
+  }
 
   await ensureGitRepo(rootDir);
 
   const planPath = resolve(options.planPath);
   const tasksPath = resolve(options.tasksPath);
   const teamPath = options.teamPath ? resolve(options.teamPath) : undefined;
+  const runId = options.runId ?? buildRunId();
+  const paths = buildRunPaths(rootDir, runId);
+  const persistedTeamPath = teamPath
+    ? getSourcesTeamConfigPath(paths.sourcesDir)
+    : undefined;
+  const teamConfig = await loadOptionalTeamConfig(teamPath);
+  const effectiveRuntime =
+    !options.runtimeExplicit && teamConfig?.defaultRuntime
+      ? teamConfig.defaultRuntime
+      : options.runtime;
 
+  await readFile(planPath, "utf8");
   const document = await loadTasksDocument(tasksPath);
 
   if (options.dryRun) {
@@ -64,39 +99,39 @@ export async function startCommand(options: RunnerOptions): Promise<void> {
     await ensureCleanWorkingTree(rootDir);
   }
 
-  // Detached mode: spawn daemon child and exit parent BEFORE any init
+  // Detached mode: allocate the run ID in the parent and pass it to the child
   if (options.detached && !options._daemon) {
-    // Build child args: same args minus --detached, plus --_daemon
-    const childArgs = process.argv
-      .slice(1)
-      .filter((a) => a !== "--detached")
-      .concat("--_daemon");
+    const childArgs = buildDaemonArgs(runId);
+    const logPath = join(paths.runDir, "daemon.log");
+    await mkdir(paths.runDir, { recursive: true });
+    const logFile = await open(logPath, "a");
 
-    const child = spawn(process.argv[0]!, childArgs, {
-      stdio: ["ignore", "ignore", "ignore"],
-      detached: true,
-      cwd: rootDir,
-    });
-    child.unref();
+    try {
+      const child = spawn(process.argv[0]!, childArgs, {
+        stdio: ["ignore", logFile.fd, logFile.fd],
+        detached: true,
+        cwd: rootDir,
+      });
+      child.unref();
 
-    console.log(`RalphX daemon started (PID ${child.pid})`);
-    console.log(
-      `The daemon will create its own run ID and log it to its log file.`,
-    );
+      console.log(`RalphX daemon started (PID ${child.pid})`);
+      console.log(`Run ID: ${runId}`);
+      console.log(`Log: ${logPath}`);
+    } finally {
+      await logFile.close();
+    }
     process.exit(0);
   }
 
   // Initialize
-  const runId = buildRunId();
-  const paths = buildRunPaths(rootDir, runId);
   const branch = await createRunBranch(runId, rootDir);
 
   const state = createInitialRunState({
     runId,
     branch,
     retryLimit: options.retry,
-    defaultRuntime: options.runtime,
-    teamConfigPath: teamPath,
+    defaultRuntime: effectiveRuntime,
+    teamConfigPath: persistedTeamPath,
     paths,
     tasksDocument: document,
   });
@@ -119,22 +154,15 @@ export async function startCommand(options: RunnerOptions): Promise<void> {
 
   // Select runtime
   const runtime =
-    options.runtime === "codex"
+    effectiveRuntime === "codex"
       ? new CodexProvider()
       : new ClaudeCodeProvider();
 
   const available = await runtime.isAvailable();
   if (!available) {
     throw new Error(
-      `Runtime "${options.runtime}" is not available. Ensure the CLI is installed and in PATH.`,
+      `Runtime "${effectiveRuntime}" is not available. Ensure the CLI is installed and in PATH.`,
     );
-  }
-
-  // Load team config
-  let teamConfig: TeamConfig | undefined;
-  if (teamPath) {
-    const teamRaw = await readFile(teamPath, "utf8");
-    teamConfig = teamConfigSchema.parse(JSON.parse(teamRaw) as unknown);
   }
 
   // Monitoring
@@ -166,7 +194,7 @@ export async function startCommand(options: RunnerOptions): Promise<void> {
     renderTui({ initialState: state, eventBus });
   } else if (!options._daemon) {
     console.log(`RalphX run ${runId} started on branch ${branch}`);
-    console.log(`Runtime: ${options.runtime}`);
+    console.log(`Runtime: ${effectiveRuntime}`);
     console.log(`Retry limit: ${options.retry}`);
   }
 

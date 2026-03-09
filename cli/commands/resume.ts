@@ -1,8 +1,11 @@
 import { resolve } from "node:path";
-import { readFile } from "node:fs/promises";
 import type { RunnerOptions } from "../../state/types";
 import type { TeamConfig } from "../../config/types";
-import { teamConfigSchema } from "../../config/schema";
+import {
+  getSourcesTeamConfigPath,
+  hasTeamConfig,
+  loadOptionalTeamConfig,
+} from "../../config/loader";
 import { getRalphxDir, saveRunState } from "../../state/run-state";
 import { loadResumeContext } from "../../orchestrator/resume";
 import {
@@ -64,10 +67,13 @@ export async function resumeCommand(options: RunnerOptions): Promise<void> {
 
   // Load team config
   let teamConfig: TeamConfig | undefined;
-  if (state.teamConfigPath) {
+  const sourcesTeamPath = getSourcesTeamConfigPath(state.sourcesDir);
+  const resumeTeamPath = (await hasTeamConfig(sourcesTeamPath))
+    ? sourcesTeamPath
+    : state.teamConfigPath;
+  if (resumeTeamPath) {
     try {
-      const teamRaw = await readFile(state.teamConfigPath, "utf8");
-      teamConfig = teamConfigSchema.parse(JSON.parse(teamRaw) as unknown);
+      teamConfig = await loadOptionalTeamConfig(resumeTeamPath);
     } catch {
       // Team config may have been removed; continue with defaults
     }

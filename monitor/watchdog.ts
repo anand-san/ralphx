@@ -22,7 +22,7 @@ export class Watchdog {
   start(): void {
     this.unsubscribe = this.eventBus.on("process:timeout", (event) => {
       if (event.type !== "process:timeout") return;
-      this.handleTimeout(event.agentId, event.pid);
+      this.handleTimeout(event.agentId, event.taskId, event.pid);
     });
   }
 
@@ -33,7 +33,7 @@ export class Watchdog {
     }
   }
 
-  private handleTimeout(agentId: string, pid?: number): void {
+  private handleTimeout(agentId: string, taskId?: string, pid?: number): void {
     if (!pid) return;
 
     // Attempt graceful kill
@@ -54,7 +54,11 @@ export class Watchdog {
     }, FORCE_KILL_GRACE_MS);
 
     // Update agent state
-    const agent = this.state.agents.find((a) => a.agentId === agentId);
+    const agent = this.state.agents.find(
+      (entry) =>
+        entry.agentId === agentId &&
+        (taskId === undefined || entry.taskId === taskId),
+    );
     if (agent) {
       agent.status = "timeout";
       agent.completedAt = new Date().toISOString();

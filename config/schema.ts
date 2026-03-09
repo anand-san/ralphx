@@ -72,24 +72,12 @@ export const teamRoleSchema = z.object({
     canExecute: z.boolean(),
     canCommit: z.boolean(),
   }),
-  promptTemplate: z.string().optional(),
-});
-
-export const workflowPhaseSchema = z.object({
-  agents: z.array(z.string()).min(1),
-  strategy: z.enum(["sequential", "parallel"]),
-});
-
-export const workflowSchema = z.object({
-  type: z.enum(["sequential", "custom"]),
-  phases: z.array(workflowPhaseSchema),
 });
 
 export const teamConfigSchema = z.object({
   name: z.string().min(1),
   defaultRuntime: z.enum(["claude-code", "codex"]).optional(),
   roles: z.array(teamRoleSchema).min(1),
-  workflow: workflowSchema.optional(),
 });
 
 // ── Run state validation ──

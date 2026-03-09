@@ -53,6 +53,10 @@ export class HeartbeatMonitor {
     this.warnedAgents.clear();
   }
 
+  private buildAgentKey(agent: RunState["agents"][number]): string {
+    return `${agent.agentId}:${agent.phaseId}:${agent.taskId}`;
+  }
+
   private check(): void {
     const now = Date.now();
 
@@ -64,14 +68,15 @@ export class HeartbeatMonitor {
       const timeout =
         this.agentTimeouts.get(agent.agentId) ?? this.defaultTimeout;
       const elapsed = now - new Date(referenceTime).getTime();
+      const agentKey = this.buildAgentKey(agent);
 
       // 80% warning (deduplicated)
       if (
         elapsed > timeout * 0.8 &&
         elapsed < timeout &&
-        !this.warnedAgents.has(agent.agentId)
+        !this.warnedAgents.has(agentKey)
       ) {
-        this.warnedAgents.add(agent.agentId);
+        this.warnedAgents.add(agentKey);
         this.eventBus.emit({
           type: "process:warning",
           ts: new Date().toISOString(),
@@ -83,8 +88,8 @@ export class HeartbeatMonitor {
       }
 
       // Timeout exceeded (deduplicated)
-      if (elapsed >= timeout && !this.timedOutAgents.has(agent.agentId)) {
-        this.timedOutAgents.add(agent.agentId);
+      if (elapsed >= timeout && !this.timedOutAgents.has(agentKey)) {
+        this.timedOutAgents.add(agentKey);
         this.eventBus.emit({
           type: "process:timeout",
           ts: new Date().toISOString(),

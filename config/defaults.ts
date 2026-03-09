@@ -2,7 +2,6 @@ import type { TeamConfig } from "./types";
 
 export const DEFAULT_TEAM: TeamConfig = {
   name: "default-engineering-team",
-  defaultRuntime: "claude-code",
   roles: [
     {
       id: "engineering-manager",
@@ -35,12 +34,4 @@ export const DEFAULT_TEAM: TeamConfig = {
       permissions: { canWrite: false, canExecute: false, canCommit: false },
     },
   ],
-  workflow: {
-    type: "sequential",
-    phases: [
-      { agents: ["product-manager"], strategy: "sequential" },
-      { agents: ["software-developer"], strategy: "sequential" },
-      { agents: ["qa-engineer"], strategy: "sequential" },
-    ],
-  },
 };

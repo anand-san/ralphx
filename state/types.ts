@@ -119,6 +119,7 @@ export interface RunState {
 // ── Process types ──
 
 export interface ProcessResult {
+  pid?: number;
   exitCode: number;
   stdout: string;
   stderr: string;
@@ -203,6 +204,7 @@ export interface RunnerOptions {
   planPath: string;
   tasksPath: string;
   runtime: RuntimeName;
+  runtimeExplicit: boolean;
   teamPath?: string;
   retry: number;
   timeout: number;
