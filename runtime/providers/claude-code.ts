@@ -58,6 +58,8 @@ export class ClaudeCodeProvider implements RuntimeProvider {
       stdin: params.prompt,
       streamOutput: params.streamOutput,
       onOutput: params.onOutput,
+      onSpawn: params.onSpawn,
+      onHeartbeat: params.onHeartbeat,
       timeout: params.timeout,
     });
 
@@ -91,6 +93,7 @@ export class ClaudeCodeProvider implements RuntimeProvider {
     );
 
     return {
+      pid: result.pid,
       exitCode: result.exitCode,
       stdout: result.stdout,
       stderr: result.stderr,

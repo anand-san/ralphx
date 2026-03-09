@@ -10,10 +10,13 @@ export interface RuntimeExecuteParams {
   timeout?: number;
   streamOutput?: boolean;
   onOutput?: (line: string, stream: "stdout" | "stderr") => void;
+  onSpawn?: (pid: number) => void;
+  onHeartbeat?: () => void;
   outputSchema?: object;
 }
 
 export interface RuntimeExecuteResult {
+  pid?: number;
   exitCode: number;
   stdout: string;
   stderr: string;

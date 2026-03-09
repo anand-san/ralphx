@@ -119,6 +119,7 @@ export interface RunState {
 // ── Process types ──
 
 export interface ProcessResult {
+  pid?: number;
   exitCode: number;
   stdout: string;
   stderr: string;

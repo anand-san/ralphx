@@ -6,6 +6,8 @@ export interface RunProcessParams {
   stdin?: string;
   streamOutput?: boolean;
   onOutput?: (line: string, stream: "stdout" | "stderr") => void;
+  onSpawn?: (pid: number) => void;
+  onHeartbeat?: () => void;
   timeout?: number;
 }
 
@@ -18,6 +20,7 @@ export async function runProcess(
     stdout: "pipe",
     stderr: "pipe",
   });
+  params.onSpawn?.(proc.pid);
 
   if (params.stdin !== undefined && proc.stdin) {
     proc.stdin.write(params.stdin);
@@ -37,6 +40,7 @@ export async function runProcess(
       if (chunk.done) break;
       const text = decoder.decode(chunk.value, { stream: true });
       buffer += text;
+      params.onHeartbeat?.();
       if (writer) writer(text);
     }
     const tail = decoder.decode();
@@ -83,7 +87,7 @@ export async function runProcess(
       ]);
       clearTimeout(outerTimer);
       clearTimeout(killTimer);
-      return { exitCode, stdout, stderr };
+      return { pid: proc.pid, exitCode, stdout, stderr };
     } catch (error) {
       clearTimeout(outerTimer);
       // DO NOT clear killTimer -- let SIGKILL fire after grace period
@@ -102,5 +106,5 @@ export async function runProcess(
     proc.exited,
   ]);
 
-  return { exitCode, stdout, stderr };
+  return { pid: proc.pid, exitCode, stdout, stderr };
 }
