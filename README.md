@@ -17,7 +17,7 @@ RalphX coordinates multiple AI agents (developer, QA, refactorer, bug-fixer, com
 ```bash
 cd /path/to/your/project   # must be a git repo
 
-# Dry run — validates files, prints phases/tasks, no execution
+# Dry run — validates plan/tasks/team inputs, prints phases/tasks, no execution
 bun /path/to/ralphx/cli/index.ts start --dry-run
 
 # Run
@@ -48,7 +48,7 @@ bun cli/index.ts <command> [options]
 | `--plan <path>`             | `PLAN.md`           | Path to the plan markdown file                                                                  |
 | `--tasks <path>`            | `tasks.json`        | Path to the tasks JSON file                                                                     |
 | `--runtime <name>`          | `codex`             | Runtime CLI to use (`codex` or `claude-code`)                                                   |
-| `--team <path>`             | _(none)_            | Path to team config JSON. Without it, uses built-in `software-developer` + `qa-engineer`        |
+| `--team <path>`             | _(none)_            | Path to team config JSON. When it sets `defaultRuntime`, that runtime is used unless `--runtime` is passed |
 | `--model <name>`            | _(runtime default)_ | Model to pass to the runtime CLI. When omitted, the runtime CLI uses its own configured default |
 | `--retry <n>`               | `3`                 | Number of retries per task (total attempts = retry + 1)                                         |
 | `--timeout <ms>`            | `600000`            | Timeout per agent invocation (10 minutes)                                                       |
@@ -163,7 +163,7 @@ The implementer is the first role with `canWrite: true`. The reviewer is the fir
 bun cli/index.ts start --detached --tasks tasks.json --plan PLAN.md
 ```
 
-Parent exits immediately. Child PID is written to `.ralphx/<run-id>/daemon.pid`. Logs go to `.ralphx/<run-id>/daemon.log`.
+Parent prints the run ID and daemon log path immediately. The child PID is written to `.ralphx/<run-id>/daemon.pid`, and daemon output is appended to `.ralphx/<run-id>/daemon.log`.
 
 ## Run Directory Structure
 

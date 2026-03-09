@@ -87,4 +87,13 @@ describe("parseCliOptions", () => {
       "Unknown option",
     );
   });
+
+  it("throws on non-positive timeout values", () => {
+    expect(() => parseCliOptions(["start", "--timeout", "0"])).toThrow(
+      "--timeout must be > 0",
+    );
+    expect(() =>
+      parseCliOptions(["start", "--heartbeat-interval", "-1"]),
+    ).toThrow("--heartbeat-interval must be > 0");
+  });
 });

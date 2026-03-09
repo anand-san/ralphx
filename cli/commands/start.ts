@@ -87,6 +87,7 @@ export async function startCommand(options: RunnerOptions): Promise<void> {
       ? teamConfig.defaultRuntime
       : options.runtime;
 
+  await readFile(planPath, "utf8");
   const document = await loadTasksDocument(tasksPath);
 
   if (options.dryRun) {

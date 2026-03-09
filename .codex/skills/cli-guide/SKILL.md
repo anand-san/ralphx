@@ -20,7 +20,7 @@ You are an AI agent that operates the RalphX multi-agent orchestration system vi
 
 ### Start a New Run
 
-Starts a fresh orchestration run. Creates a git branch `ralphx-<run-id>`, copies input files to `.ralphx/<run-id>/sources/`, and begins executing tasks.
+Starts a fresh orchestration run. Creates a git branch `ralphx/<run-id>`, copies input files to `.ralphx/<run-id>/sources/`, and begins executing tasks.
 
 ```bash
 ralphx start \
@@ -37,22 +37,21 @@ ralphx start \
 **Options:**
 | Flag | Default | Description |
 |---|---|---|
-| `--runtime <name>` | `claude-code` | AI runtime: `claude-code` or `codex` |
+| `--runtime <name>` | `codex` | AI runtime: `claude-code` or `codex` |
 | `--team <path>` | none | Custom team configuration JSON file |
 | `--retry <n>` | `3` | Max retry attempts per task |
 | `--timeout <ms>` | `600000` | Per-agent timeout in milliseconds |
 | `--heartbeat-interval <ms>` | `30000` | Health check interval in milliseconds |
-| `--concurrency <n>` | `1` | Max parallel agents |
 | `--model <name>` | runtime default | Override AI model |
 | `--no-tui` | false | Disable TUI, plain log output |
 | `--detached` | false | Run as background daemon (implies --no-tui) |
 | `--skip-quality-gates` | false | Skip format/lint/type-check/test validation |
 | `--allow-dirty` | false | Allow uncommitted changes in working tree |
-| `--dry-run` | false | Print task plan without executing |
+| `--dry-run` | false | Validate plan, tasks, and team config; print task plan without executing |
 
 **Constraints:**
 
-- Must be on `main` branch when starting (creates a new branch automatically)
+- Run starts from the current checked-out branch; start from `main` if you want the run branch based on trunk
 - Working tree must be clean unless `--allow-dirty` is set
 - The `--plan` file is free-form Markdown; `--tasks` must be valid JSON matching the TasksDocument schema
 
@@ -75,7 +74,7 @@ ralphx start \
   --detached
 ```
 
-**Output:** Prints the run ID (format: `YYYYMMDD-HHMMSS`). Save this — you need it for all other commands.
+**Output:** Prints the run ID (format: `YYYYMMDD-HHMMSS`). In detached mode it also prints the daemon log path. Save the run ID — you need it for all other commands.
 
 ---
 
@@ -201,7 +200,7 @@ To spawn RalphX as a long-running background process from another agent:
    # Check working tree is clean
    git status --porcelain
 
-   # Check we're on main
+   # Check the current base branch
    git branch --show-current
    ```
 
@@ -287,7 +286,7 @@ done
 | Run blocked on a task | Read `HANDOFF.md`, fix the issue, then `resume --run <id> --allow-dirty` |
 | Runtime not found     | Install the CLI (`claude` or `codex`) and ensure it's in PATH            |
 | Dirty working tree    | Either commit/stash changes, or use `--allow-dirty`                      |
-| Not on main branch    | Switch to main before starting: `git checkout main`                      |
+| Wrong base branch     | Switch to the branch you want to branch from before starting the run     |
 | All retries exhausted | Increase `--retry` and resume, or fix manually and resume                |
 | Daemon won't stop     | `kill -9 $(cat .ralphx/<run-id>/daemon.pid)`                             |
 | Quality gate failures | Fix the code issue, or use `--skip-quality-gates` for the resume         |

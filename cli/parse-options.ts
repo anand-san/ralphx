@@ -110,6 +110,12 @@ export function parseCliOptions(argv: string[]): RunnerOptions {
   if (command === "start" && retry < 0) {
     throw new Error("--retry must be >= 0");
   }
+  if (timeout <= 0) {
+    throw new Error("--timeout must be > 0");
+  }
+  if (heartbeatInterval <= 0) {
+    throw new Error("--heartbeat-interval must be > 0");
+  }
 
   return {
     command,
