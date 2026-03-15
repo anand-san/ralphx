@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { parseCliOptions } from "./parse-options";
 import { startCommand } from "./commands/start";
 import { resumeCommand } from "./commands/resume";
