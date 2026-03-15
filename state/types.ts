@@ -200,7 +200,7 @@ export interface ConventionalCommitMessage {
 // ── CLI options ──
 
 export interface RunnerOptions {
-  command: "start" | "resume" | "attach" | "stop" | "status" | "list";
+  command: "start" | "resume" | "attach" | "stop" | "status" | "list" | "help";
   planPath: string;
   tasksPath: string;
   runtime: RuntimeName;

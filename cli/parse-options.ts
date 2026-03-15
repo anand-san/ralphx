@@ -11,6 +11,29 @@ function parseNumber(value: string, flag: string): number {
 export function parseCliOptions(argv: string[]): RunnerOptions {
   const command = argv[0];
   if (
+    !command ||
+    command === "help" ||
+    command === "--help" ||
+    command === "-h"
+  ) {
+    return {
+      command: "help",
+      planPath: "PLAN.md",
+      tasksPath: "tasks.json",
+      runtime: "codex",
+      runtimeExplicit: false,
+      retry: 3,
+      timeout: 600000,
+      heartbeatInterval: 30000,
+      noTui: false,
+      detached: false,
+      _daemon: false,
+      skipQualityGates: false,
+      allowDirty: false,
+      dryRun: false,
+    };
+  }
+  if (
     command !== "start" &&
     command !== "resume" &&
     command !== "attach" &&
@@ -19,7 +42,7 @@ export function parseCliOptions(argv: string[]): RunnerOptions {
     command !== "list"
   ) {
     throw new Error(
-      "Usage: ralphx <start|resume|attach|stop|status|list> [options]",
+      `Unknown command: ${command}. Run "ralphx help" for usage information.`,
     );
   }
 

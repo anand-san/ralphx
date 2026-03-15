@@ -68,8 +68,28 @@ describe("parseCliOptions", () => {
     expect(opts.noTui).toBe(true);
   });
 
+  it("returns help command when no arguments provided", () => {
+    const opts = parseCliOptions([]);
+    expect(opts.command).toBe("help");
+  });
+
+  it("returns help command for --help flag", () => {
+    const opts = parseCliOptions(["--help"]);
+    expect(opts.command).toBe("help");
+  });
+
+  it("returns help command for -h flag", () => {
+    const opts = parseCliOptions(["-h"]);
+    expect(opts.command).toBe("help");
+  });
+
+  it("returns help command for help subcommand", () => {
+    const opts = parseCliOptions(["help"]);
+    expect(opts.command).toBe("help");
+  });
+
   it("throws on invalid command", () => {
-    expect(() => parseCliOptions(["invalid"])).toThrow();
+    expect(() => parseCliOptions(["invalid"])).toThrow("Unknown command");
   });
 
   it("throws on invalid runtime", () => {
